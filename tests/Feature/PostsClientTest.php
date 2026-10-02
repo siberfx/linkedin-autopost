@@ -91,11 +91,12 @@ it('reports other errors with LinkedIn\'s message or the status', function (int 
     'no body' => [503, null, 'LinkedIn rejected the request: HTTP 503'],
 ]);
 
-it('fails when LinkedIn returns no post id', function () {
+it('treats a 2xx without a post id as posted, with no URN', function () {
+    // The post exists on LinkedIn; failing here would make a retry post it twice.
     Http::fake([POSTS_URL => Http::response(null, 201)]);
 
-    expect(fn () => app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')))
-        ->toThrow(LinkedInRequestFailed::class, 'LinkedIn accepted the post but returned no post id.');
+    expect(app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')))
+        ->toBeNull();
 });
 
 it('reports a network failure as a LinkedIn request failure', function () {

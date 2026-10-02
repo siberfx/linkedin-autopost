@@ -194,6 +194,18 @@ it('shares a live model, records the post and fires Shared', function () {
     Event::assertDispatched(Shared::class, fn (Shared $e) => $e->post->is($record) && $e->shareable->is($post));
 });
 
+it('records a post LinkedIn accepted without returning its id', function () {
+    connectForTest();
+    Http::fake(['https://api.linkedin.com/rest/posts' => Http::response(null, 201)]);
+    $post = publishedPost();
+
+    $record = LinkedIn::share($post);
+
+    expect($record->status)->toBe(LinkedInPost::STATUS_POSTED)
+        ->and($record->post_urn)->toBeNull()
+        ->and(LinkedIn::wasPosted($post))->toBeTrue();
+});
+
 it('allows sharing the same model again', function () {
     connectForTest();
     Http::fake(['https://api.linkedin.com/rest/posts' => Http::sequence()

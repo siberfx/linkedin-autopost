@@ -29,4 +29,10 @@ final class LinkedInRequestFailed extends RuntimeException
     {
         return $this->status === 401;
     }
+
+    /** A 4xx other than 429: sending the same request again cannot succeed. */
+    public function isPermanent(): bool
+    {
+        return $this->status >= 400 && $this->status < 500 && $this->status !== 429;
+    }
 }

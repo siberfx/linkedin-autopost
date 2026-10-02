@@ -6,22 +6,30 @@ namespace Siberfx\LinkedInAutopost\Jobs;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Queue\InteractsWithQueue;
+use InvalidArgumentException;
 use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
 use Siberfx\LinkedInAutopost\Events\ShareFailed;
+use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
+use Siberfx\LinkedInAutopost\Exceptions\NotConnected;
+use Siberfx\LinkedInAutopost\Exceptions\NotShareable;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 use Throwable;
 
-final class ShareOnLinkedIn implements ShouldQueue
+final class ShareOnLinkedIn implements ShouldBeUnique, ShouldQueue
 {
     use InteractsWithQueue;
     use Queueable;
 
     public int $tries;
+
+    /** Seconds the unique lock may outlive a job that never ran. */
+    public int $uniqueFor = 600;
 
     public function __construct(
         public readonly string $shareableType,
@@ -47,7 +55,24 @@ final class ShareOnLinkedIn implements ShouldQueue
             return;
         }
 
-        $linkedin->share($model, LinkedInPost::TRIGGER_AUTO);
+        try {
+            $linkedin->share($model, LinkedInPost::TRIGGER_AUTO);
+        } catch (LinkedInRequestFailed $e) {
+            // 429, 5xx and network errors (status 0) are retried; other 4xx never succeed.
+            if (! $e->isPermanent()) {
+                throw $e;
+            }
+
+            $this->fail($e);
+        } catch (InvalidArgumentException|NotShareable|NotConnected $e) {
+            $this->fail($e);
+        }
+    }
+
+    /** One queued share per model: quick publish/unpublish/publish cycles cannot queue two posts. */
+    public function uniqueId(): string
+    {
+        return "{$this->shareableType}:{$this->shareableId}";
     }
 
     public function failed(Throwable $exception): void

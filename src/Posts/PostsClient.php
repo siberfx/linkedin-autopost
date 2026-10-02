@@ -13,8 +13,12 @@ final class PostsClient
 {
     private const URL = 'https://api.linkedin.com/rest/posts';
 
-    /** @throws LinkedInRequestFailed */
-    public function create(string $accessToken, string $authorUrn, LinkPost $post): string
+    /**
+     * @return string|null The post URN; null when LinkedIn accepted the post without returning its id.
+     *
+     * @throws LinkedInRequestFailed
+     */
+    public function create(string $accessToken, string $authorUrn, LinkPost $post): ?string
     {
         $article = array_filter([
             'source' => $post->url(),
@@ -51,12 +55,9 @@ final class PostsClient
             throw LinkedInRequestFailed::fromResponse($response);
         }
 
+        // A 2xx means the post exists; never fail it for a missing id, or a retry would post twice.
         $urn = $response->header('x-restli-id') ?: $response->json('id');
 
-        if (! is_string($urn) || $urn === '') {
-            throw new LinkedInRequestFailed('LinkedIn accepted the post but returned no post id.', $response->status());
-        }
-
-        return $urn;
+        return is_string($urn) && $urn !== '' ? $urn : null;
     }
 }

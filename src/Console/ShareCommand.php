@@ -57,7 +57,9 @@ final class ShareCommand extends Command
             return self::FAILURE;
         }
 
-        $this->components->info("Shared on LinkedIn: {$post->post_urn}");
+        $this->components->info($post->post_urn !== null
+            ? "Shared on LinkedIn: {$post->post_urn}"
+            : 'Shared on LinkedIn (LinkedIn returned no post id).');
 
         return self::SUCCESS;
     }
