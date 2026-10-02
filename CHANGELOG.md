@@ -15,4 +15,11 @@ All notable changes to `siberfx/linkedin-autopost` are documented here. This pro
 - PHP 8.4 and 8.5 (8.6 accepted), Laravel 12 and 13.
 - Ready-made admin UI in Tailwind and Bootstrap 5, switched with `LINKEDIN_UI_THEME`: a connection card (`<x-linkedin-autopost::connection />`), a share button (`<x-linkedin-autopost::share-button :model="…" />`) and a flash message component. Livewire variants (`linkedin-autopost.connection`, `linkedin-autopost.share-button`) when Livewire is installed. Views are publishable, and a custom theme is a folder of three views.
 - The share and disconnect routes answer HTML forms (redirect back with a message) as well as JSON; a signed share route lets the button work without a morph map.
-- `php artisan linkedin:install` and a publishable example model stub.
+- `php artisan linkedin:install` and a publishable example model stub; it prints the redirect URI to register (honouring `LINKEDIN_REDIRECT_URI`) and the gate to define.
+- The connection status is cached as plain arrays, so it works with Laravel 13's `cache.serializable_classes = false`.
+- Non-ASCII URLs are accepted: paths are percent-encoded and internationalised hosts converted to punycode (with `ext-intl`). An invalid post URL answers `422` / an error message instead of a server error.
+- No duplicate posts on retries: a `2xx` without a post id is recorded as posted (with a `null` `post_urn`); the auto-post job is unique per model and fails at once, without retrying, on a `4xx` other than `429` or an invalid post. `429`, `5xx` and network errors are still retried.
+- The stored connection is read once per request instead of once per share button.
+
+### Security
+- Every route, Livewire action and component control is guarded by the `manage-linkedin-autopost` gate (default route middleware `['web', 'auth', 'can:manage-linkedin-autopost']`). The package defines the gate to deny everyone; define it in your app to choose who may connect, disconnect, see the connection and share.

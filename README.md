@@ -37,21 +37,39 @@ php artisan linkedin:install          # publishes config + migrations, asks tail
 php artisan migrate
 ```
 
+> **Using UUID or ULID keys?** Edit the published `create_linkedin_posts_table` migration: replace
+> `morphs('shareable')` with `uuidMorphs('shareable')` / `ulidMorphs('shareable')` before migrating.
+
 `.env`:
 
 ```dotenv
 LINKEDIN_CLIENT_ID=...
 LINKEDIN_CLIENT_SECRET=...
-LINKEDIN_AUTOPOST=true
+# LINKEDIN_AUTOPOST=true   # switch on when ready
 LINKEDIN_UI_THEME=tailwind     # or bootstrap
 # LINKEDIN_REDIRECT_URI=https://example.com/linkedin/callback   # only if it differs from the route
 ```
 
-The routes sit behind `['web', 'auth']`. Narrow that to your admins in `config/linkedin-autopost.php`:
+**Required: say who may manage LinkedIn.** Everything — connecting, disconnecting, seeing the
+connection (including the member's email) and sharing — is guarded by the
+`manage-linkedin-autopost` gate. The package defines it to **deny everyone** until your app defines
+it, for example in `AppServiceProvider::boot()`:
+
+```php
+use App\Models\User;
+use Illuminate\Support\Facades\Gate;
+
+Gate::define('manage-linkedin-autopost', fn (User $user) => $user->is_admin);
+```
+
+Your definition wins whatever the provider order. The routes sit behind
+`['web', 'auth', 'can:manage-linkedin-autopost']`; the Livewire actions check the same gate, and the
+components show the connection read-only and the share button disabled for people it refuses.
+Change the middleware or the page you come back to in `config/linkedin-autopost.php`:
 
 ```php
 'routes' => [
-    'middleware' => ['web', 'auth', 'can:manage-linkedin'],
+    'middleware' => ['web', 'auth', 'can:manage-linkedin-autopost'],
     'after_connect' => '/admin/settings',
 ],
 ```
@@ -68,6 +86,7 @@ Send an admin to `route('linkedin-autopost.redirect')`. After LinkedIn's consent
 | `error&reason=…` | LinkedIn refused, e.g. `Scope "profile" is not authorized for your application` (add the OpenID Connect product). |
 | `exchange_failed` | The code could not be exchanged; the reason is in your log. Usually a redirect URL mismatch. |
 | `invalid_state` | The login attempt expired or was replayed. Connect again. |
+| `missing_code` | LinkedIn came back without an authorization code. Connect again. |
 | `not_configured` | Client id or secret missing. |
 
 ## 4. Make a model shareable
@@ -98,8 +117,19 @@ class Article extends Model implements ShareableOnLinkedIn
 
 With `LINKEDIN_AUTOPOST=true`, an `Article` is queued for LinkedIn when it is **created published**
 or **changes from draft to published** — once. Editing a published article does not post again.
-Seeders and Artisan commands do not auto-post (set `autopost.in_console` to allow it). Run a queue
-worker; the job retries 3 times and is dispatched after the database transaction commits.
+Seeders and Artisan commands do not auto-post (set `autopost.in_console` to allow it). Auto-post
+reacts to model saves through Eloquent events, so mass `update()` queries and `saveQuietly()` do not
+auto-post.
+
+Run a queue worker; the job is dispatched after the database transaction commits, is unique per
+model while it waits, and retries 3 times when LinkedIn is busy or unreachable (429, 5xx, network).
+A request LinkedIn refuses outright (401, 403, 422 …) or an invalid post fails at once, without
+retries. With the `sync` queue the share runs inside the request that saved the model, so a
+LinkedIn failure surfaces there — use a real queue.
+
+URLs are normalised for you: a non-ASCII path such as `/blog/çalışma` is percent-encoded and an
+internationalised host (`şirket.com.tr`) is converted to punycode when `ext-intl` is installed.
+`LinkPost::make()` throws `InvalidArgumentException` for a relative or non-http(s) URL.
 
 Write the commentary as plain text: characters LinkedIn reserves for mentions and hashtags
 (`# @ [ ] ( ) _ *` …) are escaped for you, so they appear exactly as written. LinkedIn does not
@@ -116,7 +146,9 @@ $article->wasPostedToLinkedIn();     // bool
 $article->linkedInPosts;             // history: post_urn, status, trigger, error, posted_at
 ```
 
-`share()` throws `NotConnected`, `NotShareable` (not live) or `LinkedInRequestFailed` (LinkedIn's message).
+`share()` throws `NotConnected`, `NotShareable` (not live), `LinkedInRequestFailed` (LinkedIn's
+message) or `InvalidArgumentException` (your `toLinkedInPost()` built an invalid URL). A post LinkedIn
+accepted without returning its id is recorded as posted with a `null` `post_urn`.
 
 ## 6. Ready-made admin UI
 
@@ -134,7 +166,8 @@ Pick the theme your admin uses (`LINKEDIN_UI_THEME=tailwind` or `bootstrap`) and
 
 Not connected, it shows **Connect LinkedIn**. Connected, it shows the member, when the token was
 issued and until when it is valid, a status badge (amber in the last 14 days, red when expired or
-revoked), **Reconnect** and **Disconnect**, plus the result of the last connect.
+revoked), **Reconnect** and **Disconnect**, plus the result of the last connect. People the
+`manage-linkedin-autopost` gate refuses see the status only, without the buttons.
 
 ### Lists and edit pages: the share button
 
@@ -154,16 +187,18 @@ Livewire: `<livewire:linkedin-autopost.share-button :model="$article" :wire:key=
 
 Props: `label`, `size` (`sm` / `md`), `:confirm="false"` to skip the confirmation. The button reads
 **Share again** once something was posted, shows the last date as its tooltip, and is disabled,
-with the reason, while LinkedIn is not connected or the model is not live. It posts to a **signed**
-URL, so it works without a morph map.
+with the reason, while the `manage-linkedin-autopost` gate refuses the viewer, LinkedIn is not
+connected or the model is not live. It posts to a **signed** URL, so it works without a morph map.
 
 Things to know:
 
-- **Guard the page, not the component.** Render the connection card and the share buttons only on
-  pages restricted to the people allowed to manage LinkedIn, for example your admin area behind
-  `auth` plus a gate. The Livewire components run their actions through Livewire's own endpoint, not
-  the package routes, so the package's `routes.middleware` does not protect them. The page you put
-  them on does.
+- **Signed share URLs do not expire.** They are protected by your auth middleware, the gate and CSRF.
+  Behind a TLS-terminating proxy or load balancer, configure `TrustProxies` so the signature (which
+  covers the scheme and host) validates.
+- **Guard the page as well.** The Livewire actions check the `manage-linkedin-autopost` gate, but
+  they run through Livewire's own endpoint, not the package routes, so any extra middleware you add
+  to `routes.middleware` does not apply to them. Put the components on pages restricted to the same
+  people.
 - **Show form errors with the flash component.** The Blade (form-based) share button flashes its
   success and failure message to the session. Put `<x-linkedin-autopost::flash />` on the page, as in
   the example above, or the person never sees why a share failed.
@@ -208,11 +243,9 @@ class Article extends Model implements ShareableOnLinkedIn
 {
     use PostsToLinkedIn;
 
-    protected $casts = ['published_at' => 'datetime'];
-
     public function isLiveForLinkedIn(): bool
     {
-        return $this->published_at !== null && $this->published_at->isPast();
+        return $this->status === 'published';
     }
 
     public function toLinkedInPost(): LinkPost
@@ -243,6 +276,22 @@ class JobVacancy extends Model implements ShareableOnLinkedIn
 }
 ```
 
+### Scheduled publishing
+
+Auto-post reacts to saves. A model that becomes live only because time passes (a future
+`published_at`, an opening date) is never saved at that moment, so nothing posts it. Schedule a
+small job that queues what has become live and was not posted yet:
+
+```php
+use Illuminate\Support\Facades\Schedule;
+use Siberfx\LinkedInAutopost\Facades\LinkedIn;
+
+Schedule::call(function () {
+    Article::query()->whereNotNull('published_at')->where('published_at', '<=', now())
+        ->whereDoesntHave('linkedInPosts', fn ($q) => $q->where('status', 'posted'))
+        ->each(fn (Article $article) => LinkedIn::queue($article));
+})->everyFiveMinutes();
+```
 React when a post goes out, e.g. to log the link:
 
 ```php
@@ -257,7 +306,9 @@ Event::listen(Shared::class, function (Shared $event) {
 |---|---|---|
 | GET | `/linkedin/connection` | `{"data": {connected, status, name, email, picture, author_urn, scopes, connected_at, expires_at, days_left}}` |
 | DELETE | `/linkedin/connection` | Revokes and forgets the token; `{"message", "revoked", "data"}` |
-| POST | `/linkedin/share/{type}/{id}` | `201 {"data": {post_urn, posted_at}}`, `422` not connected / not live, `502` LinkedIn refused, `404` unknown |
+| POST | `/linkedin/share/{type}/{id}` | `201 {"data": {post_urn, posted_at}}` (`post_urn` is `null` when LinkedIn accepted the post without returning its id), `422` not connected / not live / invalid post URL, `502` LinkedIn refused, `404` unknown |
+
+Every endpoint answers `403` to people the `manage-linkedin-autopost` gate refuses.
 
 `status` is `active`, `expired`, `revoked` or `unknown` (LinkedIn unreachable). The share endpoint
 accepts **morph-map aliases only**:
@@ -304,6 +355,11 @@ Schedule::command('linkedin:check-token')->daily();
 The token is stored encrypted (your `APP_KEY`) in `linkedin_connections`. Rotating `APP_KEY` makes it
 unreadable; the package then reports *not connected* and you connect again. To store it elsewhere,
 implement `Siberfx\LinkedInAutopost\Contracts\TokenStore` and set `token_store` in the config.
+The package reads the store once per request (or queued job) and remembers the result; connect and
+disconnect through the package so it stays in step.
+
+The connection status is cached as plain data (never objects), so it works with Laravel 13's default
+`cache.serializable_classes = false`.
 
 ## 12. LinkedIn API versions
 
