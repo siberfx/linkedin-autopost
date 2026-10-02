@@ -34,6 +34,13 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
             $this->publishesMigrations([
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'linkedin-autopost-migrations');
+
+            $this->commands([
+                Console\StatusCommand::class,
+                Console\DisconnectCommand::class,
+                Console\ShareCommand::class,
+                Console\CheckTokenCommand::class,
+            ]);
         }
     }
 }
