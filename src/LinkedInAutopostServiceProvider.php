@@ -49,7 +49,12 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'linkedin-autopost-migrations');
 
+            $this->publishes([
+                __DIR__.'/../stubs/ShareableModel.stub' => base_path('stubs/linkedin-autopost/ShareableModel.stub'),
+            ], 'linkedin-autopost-stubs');
+
             $this->commands([
+                Console\InstallCommand::class,
                 Console\StatusCommand::class,
                 Console\DisconnectCommand::class,
                 Console\ShareCommand::class,

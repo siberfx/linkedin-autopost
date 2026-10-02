@@ -1,0 +1,33 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use Siberfx\LinkedInAutopost\Concerns\PostsToLinkedIn;
+use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
+use Siberfx\LinkedInAutopost\Posts\LinkPost;
+
+/**
+ * Example: a model that is posted to LinkedIn when it goes live.
+ *
+ * 1. implement ShareableOnLinkedIn and use PostsToLinkedIn;
+ * 2. say when it is live (isLiveForLinkedIn);
+ * 3. say what to post (toLinkedInPost).
+ */
+class Article extends Model implements ShareableOnLinkedIn
+{
+    use PostsToLinkedIn;
+
+    public function isLiveForLinkedIn(): bool
+    {
+        return $this->status === 'published';
+    }
+
+    public function toLinkedInPost(): LinkPost
+    {
+        return LinkPost::make(url: route('articles.show', $this), title: $this->title)
+            ->description(Str::limit(strip_tags((string) $this->excerpt), 250))
+            ->commentary("{title}\n\n{url}");
+    }
+}
