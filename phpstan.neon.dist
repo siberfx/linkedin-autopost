@@ -8,3 +8,12 @@ parameters:
         - config
         - routes
     tmpDir: build/phpstan
+    ignoreErrors:
+        # config/ is analysed outside the host app, where env() in config files is correct.
+        -
+            identifier: larastan.noEnvCallsOutsideOfConfig
+            path: config/*
+        # The trait is applied by consuming applications, not by this package.
+        -
+            identifier: trait.unused
+            path: src/Concerns/PostsToLinkedIn.php

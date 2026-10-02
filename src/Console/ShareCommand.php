@@ -23,7 +23,7 @@ final class ShareCommand extends Command
 
     public function handle(LinkedInManager $linkedin): int
     {
-        $type = (string) $this->argument('model');
+        $type = $this->stringArgument('model');
         $class = Relation::getMorphedModel($type) ?? $type;
 
         if (! class_exists($class) || ! is_subclass_of($class, Model::class) || ! is_subclass_of($class, ShareableOnLinkedIn::class)) {
@@ -32,11 +32,13 @@ final class ShareCommand extends Command
             return self::FAILURE;
         }
 
+        $id = $this->stringArgument('id');
+
         /** @var (Model&ShareableOnLinkedIn)|null $model */
-        $model = $class::query()->find($this->argument('id'));
+        $model = $class::query()->find($id);
 
         if ($model === null) {
-            $this->components->error("Record [{$this->argument('id')}] not found.");
+            $this->components->error("Record [{$id}] not found.");
 
             return self::FAILURE;
         }
@@ -58,5 +60,12 @@ final class ShareCommand extends Command
         $this->components->info("Shared on LinkedIn: {$post->post_urn}");
 
         return self::SUCCESS;
+    }
+
+    private function stringArgument(string $name): string
+    {
+        $value = $this->argument($name);
+
+        return is_scalar($value) ? (string) $value : '';
     }
 }

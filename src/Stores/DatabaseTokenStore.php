@@ -22,7 +22,7 @@ final class DatabaseTokenStore implements TokenStore
 
         try {
             $token = $row->access_token;
-        } catch (DecryptException) {
+        } catch (DecryptException) { // @phpstan-ignore catch.neverThrown (thrown by the encrypted cast on property access)
             // APP_KEY changed since connecting: the token is unreadable, so
             // the app is effectively disconnected and must connect again.
             return null;
@@ -38,7 +38,7 @@ final class DatabaseTokenStore implements TokenStore
             name: $row->name,
             email: $row->email,
             picture: $row->picture,
-            scopes: array_values($row->scopes ?? []),
+            scopes: array_values($row->scopes ?? []), // @phpstan-ignore arrayValues.list (stored JSON is not guaranteed to be a list)
             expiresAt: $row->expires_at,
             connectedAt: $row->connected_at,
         );
