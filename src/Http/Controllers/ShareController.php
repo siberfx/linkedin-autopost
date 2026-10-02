@@ -18,6 +18,7 @@ use Siberfx\LinkedInAutopost\Exceptions\NotShareable;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 use Siberfx\LinkedInAutopost\Support\StatusMessages;
+use Siberfx\LinkedInAutopost\Support\Ui;
 
 final class ShareController extends Controller
 {
@@ -61,7 +62,7 @@ final class ShareController extends Controller
     /** @param  array<string, mixed>  $data */
     private function respond(Request $request, int $status, string $message, array $data = []): JsonResponse|RedirectResponse
     {
-        if ($request->expectsJson()) {
+        if ($request->expectsJson() || ! Ui::enabled()) {
             return response()->json(['message' => $message] + ($data === [] ? [] : ['data' => $data]), $status);
         }
 

@@ -80,3 +80,13 @@ it('prints the package callback URL when no redirect URI is configured', functio
         ->expectsOutputToContain('Register http://localhost/linkedin/callback as an Authorized redirect URL')
         ->assertSuccessful();
 });
+
+it('installs headless with --headless, skipping the theme', function () {
+    File::put($this->envDir.'/.env', "APP_NAME=Test\n");
+
+    $this->artisan('linkedin:install', ['--headless' => true])
+        ->expectsOutputToContain('Added LINKEDIN_UI=false to .env.')
+        ->assertSuccessful();
+
+    expect(File::get($this->envDir.'/.env'))->toBe("APP_NAME=Test\nLINKEDIN_UI=false\n");
+});

@@ -30,7 +30,7 @@ jobs:
     name: PHP ${{ matrix.php }} - Laravel ${{ matrix.laravel }} - ${{ matrix.stability }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -39,9 +39,14 @@ jobs:
           coverage: none
 
       - name: Install dependencies
+        # Pre-release PHP: some dependencies (e.g. nette/schema via league/commonmark)
+        # cap the PHP version they accept, so the nightly job ignores upper bounds.
+        env:
+          PLATFORM_FLAGS: ${{ matrix.experimental && '--ignore-platform-req=php+' || '' }}
         run: |
-          composer require "illuminate/support:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
-          composer update --${{ matrix.stability }} --prefer-dist --no-interaction
+          composer require "illuminate/support:${{ matrix.laravel }}" --no-interaction --no-update
+          composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
+          composer update --${{ matrix.stability }} --prefer-dist --no-interaction $PLATFORM_FLAGS
 
       - name: Pint
         if: matrix.stability == 'prefer-stable' && matrix.php == '8.4'

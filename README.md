@@ -12,6 +12,8 @@ a preview.
 - One site-wide LinkedIn **member** account (the person who clicks Connect).
 - Auto-post when a model becomes live, at most once, off until you switch it on.
 - Ready-made connection card and share button (Tailwind or Bootstrap 5, Blade or Livewire), plus routes, JSON endpoints, Artisan commands and events if you prefer to build your own.
+- Headless mode (`LINKEDIN_UI=false`) when you want the package without any UI.
+- Optional Telegram and Slack messages on every post, failed share and expiring token.
 
 Requires PHP 8.4+ and Laravel 12 or 13.
 
@@ -153,6 +155,7 @@ accepted without returning its id is recorded as posted with a `null` `post_urn`
 ## 6. Ready-made admin UI
 
 Pick the theme your admin uses (`LINKEDIN_UI_THEME=tailwind` or `bootstrap`) and drop in the components.
+Building your own UI, or none at all? See [headless mode](#12-headless-no-ui).
 
 ### Settings page: the connection card
 
@@ -341,6 +344,7 @@ php artisan linkedin:status
 php artisan linkedin:share article 42 [--force]
 php artisan linkedin:disconnect [--force]
 php artisan linkedin:check-token [--days=7]
+php artisan linkedin:test-notification [--channel=slack]
 ```
 
 LinkedIn member tokens last **60 days**, and self-serve apps get **no refresh token** — someone has to
@@ -350,7 +354,71 @@ click Connect again before it runs out. Schedule the check and listen for `Token
 Schedule::command('linkedin:check-token')->daily();
 ```
 
-## 11. Keeping the token somewhere else
+## 11. Telegram and Slack notifications
+
+Get a message when a post goes out, when an automatic share gives up, and when the token is about
+to expire. Everything is off by default; each switch is in the `notifications` section of the config:
+
+```dotenv
+LINKEDIN_NOTIFY=true                 # master switch
+
+LINKEDIN_NOTIFY_TELEGRAM=true
+LINKEDIN_TELEGRAM_BOT_TOKEN=123456:ABC…   # from @BotFather
+LINKEDIN_TELEGRAM_CHAT_ID=-1001234567890  # user, group or @channel; add the bot to it first
+# LINKEDIN_TELEGRAM_THREAD_ID=42          # forum topic, optional
+
+LINKEDIN_NOTIFY_SLACK=true
+LINKEDIN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/…
+```
+
+Choose which events send a message:
+
+```php
+'notifications' => [
+    'events' => ['shared' => true, 'failed' => true, 'token_expiring' => true],
+    'queue_connection' => null,
+    'queue' => null,
+    // …
+],
+```
+
+Then check the settings:
+
+```bash
+php artisan linkedin:test-notification [--channel=telegram]
+```
+
+Each channel is sent from its own queued job (`SendNotification`), retried `tries` times with
+`backoff`. A failing channel never fails the share or blocks the other channels; on the `sync` queue
+the error is reported through your exception handler. The token-expiry message needs the scheduled
+`linkedin:check-token` from the previous section.
+
+To add a channel of your own (Teams, Discord…), implement
+`Siberfx\LinkedInAutopost\Contracts\NotificationChannel` and list it; the container builds it with
+its config array as `$config`:
+
+```php
+'channels' => [
+    // telegram, slack…
+    'teams' => ['enabled' => true, 'class' => App\Notifications\TeamsChannel::class, 'webhook_url' => env('TEAMS_WEBHOOK_URL')],
+],
+```
+
+## 12. Headless: no UI
+
+Set `LINKEDIN_UI=false` (or install with `php artisan linkedin:install --headless`) to use the
+package without any of its UI:
+
+- no views, Blade components or Livewire components are registered, and there is no view publish tag;
+- the share and disconnect endpoints always answer JSON, also to plain form posts;
+- the OAuth routes, the `LinkedIn` facade, auto-posting, events, commands and notifications work as before.
+
+Connect by sending an admin to `route('linkedin-autopost.redirect')`; the callback returns to
+`routes.after_connect` with `?linkedin=connected|cancelled|error|…`. To drop the routes as well, set
+`routes.enabled` to `false` and drive the OAuth flow yourself through `LinkedIn::authorizationUrl()`
+and `LinkedIn::completeConnection()`.
+
+## 13. Keeping the token somewhere else
 
 The token is stored encrypted (your `APP_KEY`) in `linkedin_connections`. Rotating `APP_KEY` makes it
 unreadable; the package then reports *not connected* and you connect again. To store it elsewhere,
@@ -361,7 +429,7 @@ disconnect through the package so it stays in step.
 The connection status is cached as plain data (never objects), so it works with Laravel 13's default
 `cache.serializable_classes = false`.
 
-## 12. LinkedIn API versions
+## 14. LinkedIn API versions
 
 Posts are sent with `LinkedIn-Version: 202609`. LinkedIn retires each version about a year after
 release; when they announce a sunset, set `LINKEDIN_API_VERSION` to a newer `YYYYMM`.

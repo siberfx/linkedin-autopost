@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Support\StatusMessages;
+use Siberfx\LinkedInAutopost\Support\Ui;
 
 final class ConnectionController extends Controller
 {
@@ -27,7 +28,7 @@ final class ConnectionController extends Controller
             ? 'LinkedIn disconnected.'
             : 'LinkedIn disconnected here, but LinkedIn did not confirm revoking the token. Remove the app under LinkedIn → Settings → Data privacy → Permitted services if needed.';
 
-        if (! $request->expectsJson()) {
+        if (! $request->expectsJson() && Ui::enabled()) {
             return back()->with(StatusMessages::FLASH_KEY, ['type' => 'success', 'message' => $message]);
         }
 

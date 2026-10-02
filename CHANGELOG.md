@@ -3,6 +3,16 @@
 All notable changes to `siberfx/linkedin-autopost` are documented here. This project follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Telegram and Slack notifications when a post goes out, an automatic share gives up, or the token is about to expire. Off by default; a master switch (`LINKEDIN_NOTIFY`), one per channel (`LINKEDIN_NOTIFY_TELEGRAM`, `LINKEDIN_NOTIFY_SLACK`) and one per event under `notifications.events`. Sent from one queued `SendNotification` job per channel; a failing channel never fails the share. Add your own channel by implementing `Contracts\NotificationChannel`.
+- `php artisan linkedin:test-notification [--channel=…]` sends a test message to the enabled channels.
+- Headless mode: `LINKEDIN_UI=false` (or `linkedin:install --headless`) registers no views, Blade or Livewire components, and the share and disconnect endpoints answer JSON only.
+
+### Fixed
+- CI: the experimental PHP 8.6 job ignores upper PHP bounds of dependencies (`--ignore-platform-req=php+`), so it installs instead of failing on `nette/schema`.
+
 ## [1.0.0] - 2026-10-02
 
 ### Added
