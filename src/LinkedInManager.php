@@ -31,14 +31,19 @@ final class LinkedInManager
         private readonly PostsClient $posts,
     ) {}
 
+    /** The manager is scoped per request/job, so this is read (query + decrypt) at most once each. */
+    private ?StoredConnection $stored = null;
+
+    private bool $storedLoaded = false;
+
     public function isConnected(): bool
     {
-        return $this->store->get() !== null;
+        return $this->stored() !== null;
     }
 
     public function connection(): Connection
     {
-        $stored = $this->store->get();
+        $stored = $this->stored();
 
         if ($stored === null) {
             return Connection::disconnected();
@@ -64,7 +69,7 @@ final class LinkedInManager
      */
     public function share(Model&ShareableOnLinkedIn $model, string $trigger = LinkedInPost::TRIGGER_MANUAL): LinkedInPost
     {
-        $stored = $this->store->get() ?? throw new NotConnected;
+        $stored = $this->stored() ?? throw new NotConnected;
 
         if (! $model->isLiveForLinkedIn()) {
             throw new NotShareable;
@@ -111,7 +116,7 @@ final class LinkedInManager
     /** @return bool Whether LinkedIn confirmed the revocation; the token is forgotten either way. */
     public function disconnect(): bool
     {
-        $stored = $this->store->get();
+        $stored = $this->stored();
         $revoked = $stored === null || $this->oauth->revoke($stored->accessToken);
 
         if ($stored !== null) {
@@ -119,6 +124,7 @@ final class LinkedInManager
         }
 
         $this->store->forget();
+        $this->forgetStored();
         event(new Disconnected($revoked));
 
         return $revoked;
@@ -134,12 +140,29 @@ final class LinkedInManager
     {
         $stored = $this->oauth->exchange($code);
         $this->store->put($stored);
+        $this->forgetStored();
 
         $connection = Connection::fromStored($stored, 'active');
         $this->remember($stored, $connection);
         event(new Connected($connection));
 
         return $connection;
+    }
+
+    private function stored(): ?StoredConnection
+    {
+        if (! $this->storedLoaded) {
+            $this->stored = $this->store->get();
+            $this->storedLoaded = true;
+        }
+
+        return $this->stored;
+    }
+
+    private function forgetStored(): void
+    {
+        $this->stored = null;
+        $this->storedLoaded = false;
     }
 
     private function fetchStatus(StoredConnection $stored): Connection

@@ -135,6 +135,7 @@ it('answers 422 when not connected or not live, and 502 when LinkedIn refuses', 
         ->assertStatus(422)->assertJsonPath('message', 'LinkedIn is not connected.');
 
     app(TokenStore::class)->put(new StoredConnection('member-token', 'urn:li:person:abc'));
+    app()->forgetScopedInstances(); // the manager remembers the connection per request; start a new one
     $this->actingAs($this->user)->postJson("/linkedin/share/post/{$draft->id}")->assertStatus(422);
 
     Http::fake(['https://api.linkedin.com/rest/posts' => Http::response(['message' => 'Rate limited'], 429)]);

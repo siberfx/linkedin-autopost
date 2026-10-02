@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
@@ -16,6 +17,7 @@ use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
 use Siberfx\LinkedInAutopost\Exceptions\NotConnected;
 use Siberfx\LinkedInAutopost\Exceptions\NotShareable;
 use Siberfx\LinkedInAutopost\Facades\LinkedIn;
+use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\Post;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\PostStatus;
@@ -32,10 +34,45 @@ function connectForTest(string $token = 'member-token'): void
     ));
 }
 
+/** The manager remembers the stored connection per request; a token written behind its back needs a new one. */
+function freshRequest(): void
+{
+    app()->forgetScopedInstances();
+    LinkedIn::clearResolvedInstance(LinkedInManager::class);
+}
+
 function publishedPost(): Post
 {
     return Post::query()->create(['title' => 'Hello', 'status' => PostStatus::Published]);
 }
+
+it('reads the stored connection once per request', function () {
+    connectForTest();
+    $linkedin = app(LinkedInManager::class);
+    DB::enableQueryLog();
+
+    foreach (range(1, 5) as $ignored) {
+        expect($linkedin->isConnected())->toBeTrue();
+    }
+
+    expect(DB::getQueryLog())->toHaveCount(1);
+});
+
+it('forgets the remembered connection when it connects or disconnects', function () {
+    Http::fake([
+        'https://www.linkedin.com/oauth/v2/revoke' => Http::response('', 200),
+        'https://www.linkedin.com/oauth/v2/accessToken' => Http::response(['access_token' => 'new-token', 'expires_in' => 5184000]),
+        'https://api.linkedin.com/v2/userinfo' => Http::response(['sub' => 'xyz', 'name' => 'Grace Hopper']),
+    ]);
+    $linkedin = app(LinkedInManager::class);
+    expect($linkedin->isConnected())->toBeFalse();
+
+    $linkedin->completeConnection('code');
+    expect($linkedin->isConnected())->toBeTrue();
+
+    $linkedin->disconnect();
+    expect($linkedin->isConnected())->toBeFalse();
+});
 
 it('reports not connected without calling LinkedIn', function () {
     Http::fake();
@@ -225,6 +262,7 @@ it('refuses to share when not connected or not live', function () {
     expect(fn () => LinkedIn::share(publishedPost()))->toThrow(NotConnected::class);
 
     connectForTest();
+    freshRequest();
     $draft = Post::query()->create(['title' => 'Draft', 'status' => PostStatus::Draft]);
 
     expect(fn () => LinkedIn::share($draft))->toThrow(NotShareable::class);
