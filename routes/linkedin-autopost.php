@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Siberfx\LinkedInAutopost\Http\Controllers\ConnectionController;
 use Siberfx\LinkedInAutopost\Http\Controllers\OAuthController;
+use Siberfx\LinkedInAutopost\Http\Controllers\ShareController;
 
 Route::group([
     'prefix' => (string) config('linkedin-autopost.routes.prefix', 'linkedin'),
@@ -12,4 +14,7 @@ Route::group([
 ], function (): void {
     Route::get('redirect', [OAuthController::class, 'redirect'])->name('redirect');
     Route::get('callback', [OAuthController::class, 'callback'])->name('callback');
+    Route::get('connection', [ConnectionController::class, 'show'])->name('connection.show');
+    Route::delete('connection', [ConnectionController::class, 'destroy'])->name('connection.destroy');
+    Route::post('share/{type}/{id}', ShareController::class)->name('share');
 });
