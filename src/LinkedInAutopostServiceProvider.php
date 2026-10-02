@@ -11,6 +11,11 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/linkedin-autopost.php', 'linkedin-autopost');
+
+        $this->app->bind(
+            \Siberfx\LinkedInAutopost\Contracts\TokenStore::class,
+            fn ($app) => $app->make((string) config('linkedin-autopost.token_store')),
+        );
     }
 
     public function boot(): void
