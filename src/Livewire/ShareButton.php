@@ -57,7 +57,7 @@ final class ShareButton extends Component
 
         try {
             $post = $linkedin->share($this->model(), LinkedInPost::TRIGGER_MANUAL);
-        } catch (NotConnected|NotShareable|LinkedInRequestFailed $e) {
+        } catch (NotConnected|NotShareable|LinkedInRequestFailed|InvalidArgumentException $e) {
             $this->flash = ['type' => 'error', 'message' => $e->getMessage()];
 
             return;

@@ -12,5 +12,6 @@ interface ShareableOnLinkedIn
     /** Whether the model is public right now (e.g. published and not expired). */
     public function isLiveForLinkedIn(): bool;
 
+    /** @throws \InvalidArgumentException When LinkPost::make() is given an invalid URL. */
     public function toLinkedInPost(): LinkPost;
 }

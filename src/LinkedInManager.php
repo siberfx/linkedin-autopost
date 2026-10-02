@@ -7,6 +7,7 @@ namespace Siberfx\LinkedInAutopost;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use InvalidArgumentException;
 use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
 use Siberfx\LinkedInAutopost\Data\Connection;
@@ -59,6 +60,7 @@ final class LinkedInManager
      * Post the model now. Re-sharing an already posted model is allowed.
      *
      * @throws NotConnected|NotShareable|LinkedInRequestFailed
+     * @throws InvalidArgumentException When the model's toLinkedInPost() builds an invalid post.
      */
     public function share(Model&ShareableOnLinkedIn $model, string $trigger = LinkedInPost::TRIGGER_MANUAL): LinkedInPost
     {

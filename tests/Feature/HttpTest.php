@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\GenericUser;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
 use Siberfx\LinkedInAutopost\Data\StoredConnection;
+use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\Post;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\PostStatus;
+use Siberfx\LinkedInAutopost\Tests\Fixtures\RelativeUrlPost;
 
 beforeEach(function () {
     $this->user = new GenericUser(['id' => 1, 'name' => 'Admin']);
@@ -149,4 +153,21 @@ it('answers 404 for anything that is not a known shareable record', function (st
 
 it('registers its routes by default', function () {
     expect(app('router')->has('linkedin-autopost.callback'))->toBeTrue();
+});
+
+it('answers 422 when the model cannot build a valid LinkedIn post', function () {
+    Http::fake();
+    Relation::morphMap(['relative-url-post' => RelativeUrlPost::class]);
+    app(TokenStore::class)->put(new StoredConnection('member-token', 'urn:li:person:abc'));
+    $post = RelativeUrlPost::query()->create(['title' => 'Hi', 'status' => 'published']);
+
+    $this->actingAs($this->user)->postJson("/linkedin/share/relative-url-post/{$post->id}")
+        ->assertStatus(422)
+        ->assertJsonPath('message', 'LinkedIn posts need an absolute http(s) URL, got [/posts/'.$post->id.'].');
+    $this->actingAs($this->user)
+        ->postJson(URL::signedRoute('linkedin-autopost.share.signed', ['type' => RelativeUrlPost::class, 'id' => $post->id]))
+        ->assertStatus(422);
+
+    Http::assertNothingSent();
+    expect(LinkedInPost::query()->count())->toBe(0);
 });

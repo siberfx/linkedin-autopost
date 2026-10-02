@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use InvalidArgumentException;
 use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
 use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
 use Siberfx\LinkedInAutopost\Exceptions\NotConnected;
@@ -44,7 +45,8 @@ final class ShareController extends Controller
 
         try {
             $post = $linkedin->share($model, LinkedInPost::TRIGGER_MANUAL);
-        } catch (NotConnected|NotShareable $e) {
+        } catch (NotConnected|NotShareable|InvalidArgumentException $e) {
+            // InvalidArgumentException: the model's toLinkedInPost() built an invalid post.
             return $this->respond($request, 422, $e->getMessage());
         } catch (LinkedInRequestFailed $e) {
             return $this->respond($request, 502, $e->getMessage());

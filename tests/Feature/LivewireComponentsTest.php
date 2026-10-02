@@ -13,6 +13,7 @@ use Siberfx\LinkedInAutopost\Livewire\ShareButton;
 use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\Post;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\PostStatus;
+use Siberfx\LinkedInAutopost\Tests\Fixtures\RelativeUrlPost;
 
 beforeEach(function () {
     app(TokenStore::class)->put(new StoredConnection('member-token', 'urn:li:person:abc', name: 'Ada Lovelace',
@@ -71,4 +72,15 @@ it('refuses to change which record the button shares', function () {
         ->toThrow(Exception::class, 'locked');
     expect(fn () => Livewire::test(ShareButton::class, ['model' => $post])->set('shareableType', GenericUser::class))
         ->toThrow(Exception::class, 'locked');
+});
+
+it('shows an invalid post URL on the button instead of failing', function () {
+    Http::fake();
+    $post = RelativeUrlPost::query()->create(['title' => 'Hi', 'status' => 'published']);
+
+    Livewire::test(ShareButton::class, ['model' => $post])
+        ->call('share')
+        ->assertOk()
+        ->assertSee('LinkedIn posts need an absolute http(s) URL');
+    Http::assertNothingSent();
 });

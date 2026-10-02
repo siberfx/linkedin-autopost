@@ -10,6 +10,7 @@ use Siberfx\LinkedInAutopost\Data\StoredConnection;
 use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\Post;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\PostStatus;
+use Siberfx\LinkedInAutopost\Tests\Fixtures\RelativeUrlPost;
 
 beforeEach(function () {
     $this->user = new GenericUser(['id' => 1]);
@@ -60,4 +61,15 @@ it('still answers JSON to JSON requests on the signed route', function () {
     $url = URL::signedRoute('linkedin-autopost.share.signed', ['type' => 'post', 'id' => $this->post->id]);
 
     $this->actingAs($this->user)->postJson($url)->assertCreated()->assertJsonPath('data.post_urn', 'urn:li:share:6');
+});
+
+it('flashes an error when the model cannot build a valid LinkedIn post', function () {
+    Http::fake();
+    $post = RelativeUrlPost::query()->create(['title' => 'Hi', 'status' => 'published']);
+    $url = URL::signedRoute('linkedin-autopost.share.signed', ['type' => RelativeUrlPost::class, 'id' => $post->id]);
+
+    $this->actingAs($this->user)->from('/admin/posts')->post($url)
+        ->assertRedirect('/admin/posts')
+        ->assertSessionHas('linkedin-autopost.flash', ['type' => 'error', 'message' => 'LinkedIn posts need an absolute http(s) URL, got [/posts/'.$post->id.'].']);
+    Http::assertNothingSent();
 });
