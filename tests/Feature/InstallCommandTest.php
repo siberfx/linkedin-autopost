@@ -62,3 +62,21 @@ it('publishes the example model stub under its tag', function () {
     File::delete($target);
     @rmdir(dirname($target));
 });
+
+it('prints the configured redirect URI and the gate to define', function () {
+    config(['linkedin-autopost.redirect_uri' => 'https://example.com/admin/linkedin/callback']);
+    File::put($this->envDir.'/.env', '');
+
+    $this->artisan('linkedin:install', ['--theme' => 'bootstrap'])
+        ->expectsOutputToContain('Register https://example.com/admin/linkedin/callback as an Authorized redirect URL')
+        ->expectsOutputToContain("Gate::define('manage-linkedin-autopost', fn (User \$user) => \$user->is_admin);")
+        ->assertSuccessful();
+});
+
+it('prints the package callback URL when no redirect URI is configured', function () {
+    File::put($this->envDir.'/.env', '');
+
+    $this->artisan('linkedin:install', ['--theme' => 'bootstrap'])
+        ->expectsOutputToContain('Register http://localhost/linkedin/callback as an Authorized redirect URL')
+        ->assertSuccessful();
+});

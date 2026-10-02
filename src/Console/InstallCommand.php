@@ -6,6 +6,8 @@ namespace Siberfx\LinkedInAutopost\Console;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
+use Siberfx\LinkedInAutopost\OAuth\OAuthClient;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
 final class InstallCommand extends Command
 {
@@ -35,8 +37,10 @@ final class InstallCommand extends Command
         $this->line('Next steps:');
         $this->line('  1. php artisan migrate');
         $this->line('  2. Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET in .env');
-        $this->line('  3. Register '.route(config('linkedin-autopost.routes.name', 'linkedin-autopost.').'callback').' as an Authorized redirect URL on your LinkedIn app');
-        $this->line('  4. Put <x-linkedin-autopost::connection /> on your admin settings page');
+        $this->line('  3. '.$this->redirectStep());
+        $this->line('  4. Define who may manage LinkedIn, e.g. in AppServiceProvider::boot() (everyone is refused until you do):');
+        $this->line("     Gate::define('manage-linkedin-autopost', fn (User \$user) => \$user->is_admin);");
+        $this->line('  5. Put <x-linkedin-autopost::connection /> on your admin settings page');
 
         if ($theme === 'tailwind') {
             $this->newLine();
@@ -46,6 +50,18 @@ final class InstallCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function redirectStep(): string
+    {
+        try {
+            $uri = $this->laravel->make(OAuthClient::class)->redirectUri();
+        } catch (RouteNotFoundException) {
+            // Routes disabled and no LINKEDIN_REDIRECT_URI: there is no callback URL to show.
+            return 'Set LINKEDIN_REDIRECT_URI to the URL you registered as an Authorized redirect URL on your LinkedIn app';
+        }
+
+        return "Register {$uri} as an Authorized redirect URL on your LinkedIn app";
     }
 
     private function writeTheme(string $theme): void
