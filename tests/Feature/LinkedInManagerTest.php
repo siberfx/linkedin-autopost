@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
+use Siberfx\LinkedInAutopost\Data\Connection;
 use Siberfx\LinkedInAutopost\Data\StoredConnection;
 use Siberfx\LinkedInAutopost\Events\Connected;
 use Siberfx\LinkedInAutopost\Events\Disconnected;
@@ -80,6 +82,75 @@ it('caches the status per token', function () {
     LinkedIn::connection();
 
     Http::assertSentCount(2);
+});
+
+/** A cache store like Laravel 13's defaults: values are serialized and no classes may be unserialized. */
+function useSerializingCache(): void
+{
+    config([
+        'cache.serializable_classes' => false,
+        'cache.stores.serializing' => ['driver' => 'array', 'serialize' => true],
+        'cache.default' => 'serializing',
+    ]);
+}
+
+it('caches the status as plain data, so it survives a store that refuses to unserialize classes', function () {
+    useSerializingCache();
+    connectForTest();
+    Http::fake([
+        'https://www.linkedin.com/oauth/v2/introspectToken' => Http::response([
+            'active' => true, 'status' => 'active', 'created_at' => 1790000000, 'expires_at' => 1795184000,
+        ]),
+        'https://api.linkedin.com/v2/userinfo' => Http::response(['sub' => 'abc', 'name' => 'Ada']),
+    ]);
+
+    $first = LinkedIn::connection();
+    $second = LinkedIn::connection();
+
+    expect($first)->toBeInstanceOf(Connection::class)
+        ->and($second)->toBeInstanceOf(Connection::class)
+        ->and($second->toArray())->toBe($first->toArray())
+        ->and($second->expiresAt?->getTimestamp())->toBe(1795184000);
+    Http::assertSentCount(2);
+});
+
+it('treats a cached value that is not plain data as a miss', function () {
+    useSerializingCache();
+    connectForTest();
+    Http::fake([
+        'https://www.linkedin.com/oauth/v2/introspectToken' => Http::response(['active' => true, 'status' => 'active']),
+        'https://api.linkedin.com/v2/userinfo' => Http::response(['sub' => 'abc', 'name' => 'Ada']),
+    ]);
+    // What an older release cached: an object, which comes back as __PHP_Incomplete_Class.
+    Cache::put('linkedin-autopost:status:'.hash('sha256', 'member-token'), Connection::disconnected(), 300);
+
+    expect(LinkedIn::connection()->status)->toBe('active');
+});
+
+it('marks the cached status expired on a serializing store when LinkedIn rejects the token', function () {
+    useSerializingCache();
+    connectForTest();
+    Http::fake([
+        'https://www.linkedin.com/oauth/v2/introspectToken' => Http::response(['active' => true, 'status' => 'active']),
+        'https://api.linkedin.com/v2/userinfo' => Http::response(['sub' => 'abc', 'name' => 'Ada']),
+        'https://api.linkedin.com/rest/posts' => Http::response(['message' => 'Invalid access token'], 401),
+    ]);
+    LinkedIn::connection();
+
+    expect(fn () => LinkedIn::share(publishedPost()))->toThrow(LinkedInRequestFailed::class);
+
+    $connection = LinkedIn::connection();
+    expect($connection)->toBeInstanceOf(Connection::class)
+        ->and($connection->status)->toBe('expired')
+        ->and($connection->name)->toBe('Ada');
+});
+
+it('round-trips a connection through its cache form', function () {
+    $connection = new Connection(true, 'active', 'Ada', 'ada@example.com', 'https://pic', 'urn:li:person:abc',
+        ['openid'], CarbonImmutable::createFromTimestamp(1790000000), CarbonImmutable::createFromTimestamp(1795184000));
+
+    expect(Connection::fromCache($connection->toCache())->toArray())->toBe($connection->toArray())
+        ->and(Connection::fromCache(Connection::disconnected()->toCache())->connected)->toBeFalse();
 });
 
 it('reports an expired token without asking for the profile', function () {

@@ -43,7 +43,16 @@ final class LinkedInManager
             return Connection::disconnected();
         }
 
-        return Cache::remember($this->cacheKey($stored), $this->cacheTtl(), fn () => $this->fetchStatus($stored));
+        $cached = Cache::get($this->cacheKey($stored));
+
+        if (is_array($cached)) {
+            return Connection::fromCache($cached);
+        }
+
+        $connection = $this->fetchStatus($stored);
+        $this->remember($stored, $connection);
+
+        return $connection;
     }
 
     /**
@@ -63,7 +72,7 @@ final class LinkedInManager
             $urn = $this->posts->create($stored->accessToken, $stored->authorUrn, $model->toLinkedInPost());
         } catch (LinkedInRequestFailed $e) {
             if ($e->isUnauthorized()) {
-                Cache::put($this->cacheKey($stored), $this->connection()->withStatus('expired'), $this->cacheTtl());
+                $this->remember($stored, $this->connection()->withStatus('expired'));
             }
 
             throw $e;
@@ -125,7 +134,7 @@ final class LinkedInManager
         $this->store->put($stored);
 
         $connection = Connection::fromStored($stored, 'active');
-        Cache::put($this->cacheKey($stored), $connection, $this->cacheTtl());
+        $this->remember($stored, $connection);
         event(new Connected($connection));
 
         return $connection;
@@ -154,6 +163,12 @@ final class LinkedInManager
             connectedAt: isset($introspection['created_at']) ? CarbonImmutable::createFromTimestamp((int) $introspection['created_at']) : $stored->connectedAt,
             expiresAt: isset($introspection['expires_at']) ? CarbonImmutable::createFromTimestamp((int) $introspection['expires_at']) : $stored->expiresAt,
         );
+    }
+
+    /** Only plain arrays go into the cache; see Connection::toCache(). */
+    private function remember(StoredConnection $stored, Connection $connection): void
+    {
+        Cache::put($this->cacheKey($stored), $connection->toCache(), $this->cacheTtl());
     }
 
     private function cacheKey(StoredConnection $stored): string
