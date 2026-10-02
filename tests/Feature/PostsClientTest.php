@@ -96,3 +96,10 @@ it('fails when LinkedIn returns no post id', function () {
     expect(fn () => app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')))
         ->toThrow(LinkedInRequestFailed::class, 'LinkedIn accepted the post but returned no post id.');
 });
+
+it('reports a network failure as a LinkedIn request failure', function () {
+    Http::fake([POSTS_URL => fn () => throw new \Illuminate\Http\Client\ConnectionException('timed out')]);
+
+    expect(fn () => app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')))
+        ->toThrow(LinkedInRequestFailed::class, 'Could not reach LinkedIn: timed out');
+});
