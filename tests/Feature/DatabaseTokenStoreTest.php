@@ -71,7 +71,7 @@ it('forgets the connection', function () {
     expect($store->get())->toBeNull();
 });
 
-// Review Focus 1: APP_KEY rotated after connecting.
+// As after APP_KEY was rotated since connecting.
 it('treats an undecryptable token as not connected', function () {
     app(TokenStore::class)->put(storedConnection());
 

@@ -64,7 +64,6 @@ it('shows LinkedIn errors on the button', function () {
         ->assertSee('LinkedIn rejected the request: Rate limited');
 });
 
-// UI review focus 1: locked identity.
 it('refuses to change which record the button shares', function () {
     $post = Post::withoutEvents(fn () => Post::query()->create(['title' => 'Hi', 'status' => PostStatus::Published]));
 

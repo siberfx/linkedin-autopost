@@ -58,7 +58,6 @@ it('warns when the token expires soon', function () {
     $this->blade('<x-linkedin-autopost::connection />')->assertSee('Expires in 5 days');
 });
 
-// UI review focus 3: callback reasons are escaped.
 it('shows the callback result, escaped', function (string $theme) {
     config(['linkedin-autopost.ui.theme' => $theme]);
     request()->query->replace(['linkedin' => 'error', 'reason' => '<script>alert(1)</script>']);

@@ -41,7 +41,7 @@ it('queues a share when a draft is published', function () {
     Queue::assertPushed(ShareOnLinkedIn::class, 1);
 });
 
-// Review Focus 5: the "before" check uses the same cast rule on the previous raw values.
+// The "before" check uses the same cast rule on the previous raw values.
 it('does not queue when an already live model is edited', function () {
     $post = Post::query()->create(['title' => 'Hi', 'status' => PostStatus::Published]);
     Queue::fake();
@@ -88,7 +88,6 @@ it('queues in the console when in_console is enabled', function () {
     Queue::assertPushed(ShareOnLinkedIn::class);
 });
 
-// Review Focus 2: dispatched after commit, never for a rolled-back record.
 it('does not post a save that is rolled back, and posts once the transaction commits', function () {
     // Real sync queue (not Queue::fake): it honours afterCommit, so this
     // exercises what a queue worker would actually see.

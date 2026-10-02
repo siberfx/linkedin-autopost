@@ -143,7 +143,6 @@ it('answers 422 when not connected or not live, and 502 when LinkedIn refuses', 
         ->assertStatus(502)->assertJsonPath('message', 'LinkedIn rejected the request: Rate limited');
 });
 
-// Review Focus 4: unknown alias, class name in the URL, deleted record.
 it('answers 404 for anything that is not a known shareable record', function (string $type, string $id) {
     $this->actingAs($this->user)->postJson("/linkedin/share/{$type}/{$id}")->assertNotFound();
 })->with([

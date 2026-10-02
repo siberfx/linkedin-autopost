@@ -37,7 +37,6 @@ it('shares through the signed url without a morph map entry', function () {
     expect(LinkedInPost::query()->for($this->post)->posted()->value('post_urn'))->toBe('urn:li:share:4');
 });
 
-// UI review focus 2: tampered signature.
 it('rejects a signed url whose type or id was changed', function () {
     Http::fake();
     $url = URL::signedRoute('linkedin-autopost.share.signed', ['type' => Post::class, 'id' => $this->post->id]);

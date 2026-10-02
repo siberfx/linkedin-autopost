@@ -14,7 +14,6 @@ it('leaves ordinary text, newlines and multibyte characters alone', function () 
         ->toBe("Çok güzel — ünlü 😀\nhttps://example.com/a-b?x=1&y=2");
 });
 
-// Review Focus 3: escaping must not overflow LinkedIn's 3,000 limit or split an escape.
 it('limits the escaped length without splitting an escape sequence', function () {
     $escaped = LittleText::escape(str_repeat('#', 2000));
 
