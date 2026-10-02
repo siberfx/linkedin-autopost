@@ -48,6 +48,6 @@ final class ShareableObserver
 
         $previous = (clone $model)->setRawAttributes($before);
 
-        return ! ($previous instanceof ShareableOnLinkedIn && $previous->isLiveForLinkedIn());
+        return ! $previous->isLiveForLinkedIn();
     }
 }

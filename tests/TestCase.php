@@ -7,6 +7,7 @@ namespace Siberfx\LinkedInAutopost\Tests;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Http;
 use Orchestra\Testbench\TestCase as Orchestra;
+use Siberfx\LinkedInAutopost\Facades\LinkedIn;
 use Siberfx\LinkedInAutopost\LinkedInAutopostServiceProvider;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\Post;
 
@@ -28,7 +29,7 @@ abstract class TestCase extends Orchestra
 
     protected function getPackageAliases($app): array
     {
-        return ['LinkedIn' => \Siberfx\LinkedInAutopost\Facades\LinkedIn::class];
+        return ['LinkedIn' => LinkedIn::class];
     }
 
     protected function defineEnvironment($app): void

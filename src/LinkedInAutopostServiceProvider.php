@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Siberfx\LinkedInAutopost;
 
 use Illuminate\Support\ServiceProvider;
+use Siberfx\LinkedInAutopost\Contracts\TokenStore;
 
 final class LinkedInAutopostServiceProvider extends ServiceProvider
 {
@@ -13,7 +14,7 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/linkedin-autopost.php', 'linkedin-autopost');
 
         $this->app->bind(
-            \Siberfx\LinkedInAutopost\Contracts\TokenStore::class,
+            TokenStore::class,
             fn ($app) => $app->make((string) config('linkedin-autopost.token_store')),
         );
 

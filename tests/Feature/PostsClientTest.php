@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
@@ -98,7 +99,7 @@ it('fails when LinkedIn returns no post id', function () {
 });
 
 it('reports a network failure as a LinkedIn request failure', function () {
-    Http::fake([POSTS_URL => fn () => throw new \Illuminate\Http\Client\ConnectionException('timed out')]);
+    Http::fake([POSTS_URL => fn () => throw new ConnectionException('timed out')]);
 
     expect(fn () => app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')))
         ->toThrow(LinkedInRequestFailed::class, 'Could not reach LinkedIn: timed out');

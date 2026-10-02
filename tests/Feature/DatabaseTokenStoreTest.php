@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\DB;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
 use Siberfx\LinkedInAutopost\Data\StoredConnection;
@@ -74,11 +76,11 @@ it('treats an undecryptable token as not connected', function () {
     app(TokenStore::class)->put(storedConnection());
 
     // Same effect as a new APP_KEY: Eloquent decrypts with a different key.
-    \Illuminate\Database\Eloquent\Model::encryptUsing(new \Illuminate\Encryption\Encrypter(str_repeat('z', 32), 'AES-256-CBC'));
+    Model::encryptUsing(new Encrypter(str_repeat('z', 32), 'AES-256-CBC'));
 
     try {
         expect(app(TokenStore::class)->get())->toBeNull();
     } finally {
-        \Illuminate\Database\Eloquent\Model::encryptUsing(null);
+        Model::encryptUsing(null);
     }
 });

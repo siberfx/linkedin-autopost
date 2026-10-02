@@ -6,6 +6,7 @@ namespace Siberfx\LinkedInAutopost\OAuth;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Siberfx\LinkedInAutopost\Data\StoredConnection;
 use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
@@ -160,7 +161,7 @@ final class OAuthClient
     }
 
     /**
-     * @param  callable(): \Illuminate\Http\Client\Response  $request
+     * @param  callable(): Response  $request
      * @return array<string, mixed>|null
      */
     private function jsonOrNull(callable $request): ?array

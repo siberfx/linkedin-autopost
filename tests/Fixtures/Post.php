@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Siberfx\LinkedInAutopost\Tests\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
+use Siberfx\LinkedInAutopost\Concerns\PostsToLinkedIn;
 use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
 use Siberfx\LinkedInAutopost\Posts\LinkPost;
 
 final class Post extends Model implements ShareableOnLinkedIn
 {
-    use \Siberfx\LinkedInAutopost\Concerns\PostsToLinkedIn;
+    use PostsToLinkedIn;
 
     protected $guarded = [];
 
