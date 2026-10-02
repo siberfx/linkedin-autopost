@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Siberfx\LinkedInAutopost\Notifications\Channels\MailChannel;
 use Siberfx\LinkedInAutopost\Notifications\Channels\SlackChannel;
 use Siberfx\LinkedInAutopost\Notifications\Channels\TelegramChannel;
 use Siberfx\LinkedInAutopost\Stores\DatabaseTokenStore;
@@ -59,9 +60,9 @@ return [
     ],
 
     /*
-    | Messages sent to Telegram and/or Slack when a post goes out, an automatic
-    | share gives up, or the token is about to expire (linkedin:check-token).
-    | Sent from a queued job; a failing channel never fails the share.
+    | Messages sent to Telegram, Slack and/or email when a post goes out, an
+    | automatic share gives up, or the token is about to expire
+    | (linkedin:check-token). A failing channel never fails the share.
     | Try your settings with: php artisan linkedin:test-notification
     */
     'notifications' => [
@@ -73,6 +74,9 @@ return [
             'token_expiring' => true,
         ],
 
+        // true: one queued job per channel, retried `tries` times with `backoff`.
+        // false: sent at once inside the request or job that shared, no retries.
+        'queued' => (bool) env('LINKEDIN_NOTIFY_QUEUED', true),
         'queue_connection' => null,
         'queue' => null,
         'tries' => 3,
@@ -94,6 +98,14 @@ return [
                 'class' => SlackChannel::class,
                 // Incoming webhook URL (api.slack.com → Your apps → Incoming Webhooks).
                 'webhook_url' => env('LINKEDIN_SLACK_WEBHOOK_URL'),
+            ],
+            'mail' => [
+                'enabled' => (bool) env('LINKEDIN_NOTIFY_MAIL', false),
+                'class' => MailChannel::class,
+                // One address or several, comma separated: "ops@example.com,ceo@example.com".
+                'to' => env('LINKEDIN_NOTIFY_MAIL_TO'),
+                // A mailer from config/mail.php; null uses your default mailer and from address.
+                'mailer' => env('LINKEDIN_NOTIFY_MAILER'),
             ],
             // Your own: 'teams' => ['enabled' => true, 'class' => App\TeamsChannel::class, …],
             // a class implementing Siberfx\LinkedInAutopost\Contracts\NotificationChannel.

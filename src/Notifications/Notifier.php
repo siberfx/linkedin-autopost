@@ -59,15 +59,29 @@ final class Notifier
         return $this->container->make($class, ['config' => $config]);
     }
 
+    public function queued(): bool
+    {
+        return (bool) config('linkedin-autopost.notifications.queued', true);
+    }
+
     /**
-     * Queues the message for every enabled, configured channel, one job each so
-     * they retry independently. Never throws: a share must not fail over a notification.
+     * Sends the message to every enabled, configured channel: one queued job
+     * each so they retry independently, or right away when `queued` is false.
+     * Never throws: a share must not fail over a notification.
      */
     public function notify(Message $message): void
     {
         foreach ($this->enabledChannels() as $name) {
             try {
-                if (! $this->channel($name)->configured()) {
+                $channel = $this->channel($name);
+
+                if (! $channel->configured()) {
+                    continue;
+                }
+
+                if (! $this->queued()) {
+                    $channel->send($message);
+
                     continue;
                 }
 

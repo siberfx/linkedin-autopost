@@ -13,7 +13,7 @@ a preview.
 - Auto-post when a model becomes live, at most once, off until you switch it on.
 - Ready-made connection card and share button (Tailwind or Bootstrap 5, Blade or Livewire), plus routes, JSON endpoints, Artisan commands and events if you prefer to build your own.
 - Headless mode (`LINKEDIN_UI=false`) when you want the package without any UI.
-- Optional Telegram and Slack messages on every post, failed share and expiring token.
+- Optional Telegram, Slack and email messages on every post, failed share and expiring token, queued or sent at once.
 
 Requires PHP 8.4+ and Laravel 12 or 13.
 
@@ -30,7 +30,7 @@ Requires PHP 8.4+ and Laravel 12 or 13.
 - [8. Build your admin UI on the endpoints](#8-build-your-admin-ui-on-the-endpoints)
 - [9. Events](#9-events)
 - [10. Commands and the 60-day token](#10-commands-and-the-60-day-token)
-- [11. Telegram and Slack notifications](#11-telegram-and-slack-notifications)
+- [11. Telegram, Slack and email notifications](#11-telegram-slack-and-email-notifications)
 - [12. Headless: no UI](#12-headless-no-ui)
 - [13. Keeping the token somewhere else](#13-keeping-the-token-somewhere-else)
 - [14. LinkedIn API versions](#14-linkedin-api-versions)
@@ -856,7 +856,7 @@ php artisan linkedin:test-notification [--channel=slack]
 | `linkedin:share {model} {id}` | Shares now (`trigger` = `console`). `model` is a morph alias or a class name. Refuses an already posted model unless `--force`. |
 | `linkedin:disconnect` | Revokes and forgets the token; asks first unless `--force`. |
 | `linkedin:check-token` | Fires `TokenExpiringSoon` when fewer than `--days` (default `expiry_warning_days`) remain or the token is expired/revoked. |
-| `linkedin:test-notification` | Sends a test message to the enabled Telegram/Slack/custom channels. |
+| `linkedin:test-notification` | Sends a test message to the enabled Telegram/Slack/email/custom channels. |
 | `linkedin:install` | See [Install](#2-install). |
 
 ```bash
@@ -873,10 +873,10 @@ click Connect again before it runs out. Schedule the check and listen for `Token
 Schedule::command('linkedin:check-token')->daily();
 ```
 
-With [notifications](#11-telegram-and-slack-notifications) switched on, that daily check also sends
-the expiry warning to Telegram or Slack — no listener needed.
+With [notifications](#11-telegram-slack-and-email-notifications) switched on, that daily check also sends
+the expiry warning to Telegram, Slack or email — no listener needed.
 
-## 11. Telegram and Slack notifications
+## 11. Telegram, Slack and email notifications
 
 Get a message when a post goes out, when an automatic share gives up, and when the token is about
 to expire. Everything is off by default; each switch is in the `notifications` section of the config:
@@ -891,13 +891,20 @@ LINKEDIN_TELEGRAM_CHAT_ID=-1001234567890  # user, group or @channel; add the bot
 
 LINKEDIN_NOTIFY_SLACK=true
 LINKEDIN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/…
+
+LINKEDIN_NOTIFY_MAIL=true
+LINKEDIN_NOTIFY_MAIL_TO=ops@example.com,marketing@example.com
+# LINKEDIN_NOTIFY_MAILER=postmark          # a mailer from config/mail.php; default mailer when unset
+
+# LINKEDIN_NOTIFY_QUEUED=false             # send at once instead of from a queued job
 ```
 
-Choose which events send a message:
+Turn on any combination of channels; each one gets every message. Choose which events send a message:
 
 ```php
 'notifications' => [
     'events' => ['shared' => true, 'failed' => true, 'token_expiring' => true],
+    'queued' => true,
     'queue_connection' => null,
     'queue' => null,
     // …
@@ -913,7 +920,11 @@ php artisan linkedin:test-notification [--channel=telegram]
 ```
    INFO  telegram: sent.
    INFO  slack: sent.
+   INFO  mail: sent.
 ```
+
+The test command always sends at once (not queued), even while `LINKEDIN_NOTIFY` is off, so you can
+check the settings before switching notifications on.
 
 ### Setting up Telegram
 
@@ -931,6 +942,37 @@ php artisan linkedin:test-notification [--channel=telegram]
 1. Create an app at <https://api.slack.com/apps> → **From scratch**, pick the workspace.
 2. **Incoming Webhooks** → switch on → **Add New Webhook to Workspace** → choose the channel.
 3. Copy the URL (`https://hooks.slack.com/services/T…/B…/…`) into `LINKEDIN_SLACK_WEBHOOK_URL`.
+
+### Setting up email
+
+Email goes through your app's own mailer, so configure `config/mail.php` (`MAIL_MAILER`,
+`MAIL_FROM_ADDRESS`, …) as for any Laravel mail; the package adds nothing of its own.
+
+```dotenv
+LINKEDIN_NOTIFY_MAIL=true
+LINKEDIN_NOTIFY_MAIL_TO=ops@example.com,marketing@example.com
+```
+
+- `to` is one address or several, comma separated (or an array in the config file). Invalid
+  addresses are ignored; with no valid address the channel is skipped.
+- `mailer` picks a mailer from `config/mail.php` (e.g. `ses`, `postmark`, `log`); unset uses the default.
+- The subject is the headline (`✅ Shared on LinkedIn: …`); the body is a short HTML email with the
+  lines below it and links made clickable. It needs no views, so it works in headless mode too.
+- In local development, `MAIL_MAILER=log` writes the email to `storage/logs/laravel.log`.
+
+The email is the `Siberfx\LinkedInAutopost\Notifications\NotificationMail` mailable, so your tests can
+assert it:
+
+```php
+Mail::fake();
+
+LinkedIn::share($article);
+
+Mail::assertSent(NotificationMail::class, fn (NotificationMail $mail) => $mail->hasTo('ops@example.com'));
+```
+
+Need a different recipient list per environment, or your own template? Leave the `mail` channel off
+and register your own mail channel (see [A channel of your own](#a-channel-of-your-own)).
 
 ### What the messages look like
 
@@ -953,8 +995,8 @@ Account: Ada Lovelace
 Connect again to keep posting.
 ```
 
-The headline is bold (HTML in Telegram, mrkdwn in Slack); titles are escaped, so `<`, `>` and `&`
-in your content cannot break the formatting.
+The headline is bold (HTML in Telegram and email, mrkdwn in Slack); titles are escaped, so `<`, `>`
+and `&` in your content cannot break the formatting. In email the headline is also the subject.
 
 ### Common setups
 
@@ -975,19 +1017,55 @@ LINKEDIN_NOTIFY=true
 LINKEDIN_NOTIFY_TELEGRAM=true
 ```
 
+```dotenv
+# Email the team about failures only, Slack for everything
+LINKEDIN_NOTIFY=true
+LINKEDIN_NOTIFY_SLACK=true
+LINKEDIN_NOTIFY_MAIL=true
+LINKEDIN_NOTIFY_MAIL_TO=dev-team@example.com
+```
+
+The event switches apply to every channel. To route events to different channels, keep only Slack
+on here and send the failure email from a `ShareFailed` listener (section 9).
+
+### Queued or immediate
+
+Notifications are **queued by default** (`queued` = `true`, `LINKEDIN_NOTIFY_QUEUED`):
+
+| | `queued` = `true` (default) | `queued` = `false` |
+|---|---|---|
+| How | One `SendNotification` job per channel | Sent at once, one channel after the other |
+| Where | Your queue worker | Inside the request, job or command that shared |
+| Retries | `tries` times with `backoff` per channel | None |
+| A failure | Retried, then in `failed_jobs` | Reported to your exception handler |
+| Needs | A running queue worker (or `QUEUE_CONNECTION=sync`) | Nothing |
+
 ```php
-// Send notifications on a dedicated queue
+// Queued, on a dedicated queue with more patience
+'queued' => true,
 'queue_connection' => 'redis',
 'queue' => 'notifications',
 'tries' => 5,
 'backoff' => [30, 120, 600],
 ```
 
-Each channel is sent from its own queued job (`SendNotification`), retried `tries` times with
-`backoff`. A failing channel never fails the share or blocks the other channels; on the `sync` queue
-the error is reported through your exception handler. The token-expiry message needs the scheduled
-`linkedin:check-token` from the previous section. Turning a switch off also drops messages that are
-already waiting in the queue.
+```bash
+php artisan queue:work redis --queue=notifications,default
+```
+
+```dotenv
+# No queue worker at all (small sites, cron-only hosting)
+LINKEDIN_NOTIFY_QUEUED=false
+```
+
+Either way a failing channel never fails the share or blocks the other channels. Auto-posts already
+run in a queued job, so with `queued` = `false` their notifications are sent from that job; a
+manual share from the button waits for Telegram, Slack and the mail server before it answers (each
+HTTP call is limited by `http.timeout`). On the `sync` queue connection the queued jobs also run at
+once, and errors are reported the same way.
+
+The token-expiry message needs the scheduled `linkedin:check-token` from the previous section.
+Turning a switch off also drops messages that are already waiting in the queue.
 
 ### A channel of your own
 
@@ -1383,9 +1461,11 @@ Define the `manage-linkedin-autopost` gate (or act as a user it allows) in tests
 | `notifications.enabled` | `LINKEDIN_NOTIFY` | `false` | Master switch. |
 | `notifications.events.*` | | all `true` | `shared`, `failed`, `token_expiring`. |
 | `notifications.queue_connection` / `.queue` | | `null` | |
-| `notifications.tries` / `.backoff` | | `3` / `[30, 120]` | |
+| `notifications.queued` | `LINKEDIN_NOTIFY_QUEUED` | `true` | `false` sends at once, without retries. |
+| `notifications.tries` / `.backoff` | | `3` / `[30, 120]` | Queued mode only. |
 | `notifications.channels.telegram.*` | `LINKEDIN_NOTIFY_TELEGRAM`, `LINKEDIN_TELEGRAM_BOT_TOKEN`, `LINKEDIN_TELEGRAM_CHAT_ID`, `LINKEDIN_TELEGRAM_THREAD_ID` | off | |
 | `notifications.channels.slack.*` | `LINKEDIN_NOTIFY_SLACK`, `LINKEDIN_SLACK_WEBHOOK_URL` | off | |
+| `notifications.channels.mail.*` | `LINKEDIN_NOTIFY_MAIL`, `LINKEDIN_NOTIFY_MAIL_TO`, `LINKEDIN_NOTIFY_MAILER` | off | Uses `config/mail.php`. |
 | `token_store` | | `DatabaseTokenStore` | Any `TokenStore` class. |
 | `http.timeout` | | `20` | Seconds, for LinkedIn, Telegram and Slack calls. |
 | `job.tries` / `job.backoff` | | `3` / `[60, 300]` | The auto-post job. |
@@ -1406,7 +1486,8 @@ Define the `manage-linkedin-autopost` gate (or act as a user it allows) in tests
 | Share button disabled | Its tooltip/reason says why: not connected, not live, or the gate refuses you. |
 | Signed share URL answers `403` behind a proxy | Configure `TrustProxies` so the scheme and host match. |
 | Tailwind components unstyled | Add the `@source` line (section 6). |
-| No Telegram/Slack message | `php artisan linkedin:test-notification` shows which switch or setting is missing; check `failed_jobs` for `SendNotification`. |
+| No Telegram/Slack/email message | `php artisan linkedin:test-notification` shows which switch or setting is missing; check `failed_jobs` for `SendNotification`, and that a queue worker runs (or set `LINKEDIN_NOTIFY_QUEUED=false`). |
+| Email not arriving | Test the app's mail first (`MAIL_MAILER`, `MAIL_FROM_ADDRESS`); `LINKEDIN_NOTIFY_MAIL_TO` must hold a valid address. |
 | Telegram *chat not found* | The bot is not in the chat, or the chat id is wrong (groups are negative). |
 | Not connected after rotating `APP_KEY` | The stored token can no longer be decrypted: connect again. |
 

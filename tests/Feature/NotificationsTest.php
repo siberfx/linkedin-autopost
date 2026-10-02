@@ -7,6 +7,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
 use Siberfx\LinkedInAutopost\Data\Connection;
@@ -17,6 +18,7 @@ use Siberfx\LinkedInAutopost\Exceptions\NotificationFailed;
 use Siberfx\LinkedInAutopost\Facades\LinkedIn;
 use Siberfx\LinkedInAutopost\Jobs\SendNotification;
 use Siberfx\LinkedInAutopost\Notifications\Message;
+use Siberfx\LinkedInAutopost\Notifications\NotificationMail;
 use Siberfx\LinkedInAutopost\Notifications\Notifier;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\Post;
 use Siberfx\LinkedInAutopost\Tests\Fixtures\PostStatus;
@@ -272,4 +274,89 @@ it('says so when no channel is enabled', function () {
     $this->artisan('linkedin:test-notification')
         ->expectsOutputToContain('No notification channel is enabled')
         ->assertFailed();
+});
+
+it('emails the configured addresses', function () {
+    Mail::fake();
+    enableNotifications('mail');
+    config(['linkedin-autopost.notifications.channels.mail.to' => 'ops@example.com, ceo@example.com, not-an-email']);
+    fakeLinkedInAndChannels();
+
+    LinkedIn::share($this->post);
+
+    Mail::assertSent(NotificationMail::class, function (NotificationMail $mail) {
+        $html = $mail->render();
+
+        return $mail->hasTo('ops@example.com') && $mail->hasTo('ceo@example.com') && ! $mail->hasTo('not-an-email')
+            && $mail->envelope()->subject === '✅ Shared on LinkedIn: Fish & <Chips>'
+            && str_contains($html, '<strong>Shared on LinkedIn: Fish &amp; &lt;Chips&gt;</strong>')
+            && str_contains($html, '<p>Post: https://www.linkedin.com/feed/update/urn:li:share:7/</p>')
+            && str_contains($html, '<a href="https://example.com/posts/'.$this->post->id.'">');
+    });
+});
+
+it('sends the email through the configured mailer', function () {
+    Mail::fake();
+    enableNotifications('mail');
+    config([
+        'linkedin-autopost.notifications.channels.mail.to' => 'ops@example.com',
+        'linkedin-autopost.notifications.channels.mail.mailer' => 'array',
+    ]);
+
+    app(Notifier::class)->sendNow('mail', Message::test());
+
+    Mail::mailer('array')->assertSent(NotificationMail::class);
+});
+
+it('skips the mail channel without a valid address', function () {
+    Mail::fake();
+    enableNotifications('mail');
+    config(['linkedin-autopost.notifications.channels.mail.to' => 'nobody']);
+    fakeLinkedInAndChannels();
+
+    LinkedIn::share($this->post);
+
+    Mail::assertNothingSent();
+});
+
+it('reports a mail transport failure without failing the share', function () {
+    Exceptions::fake();
+    enableNotifications('mail');
+    config([
+        'linkedin-autopost.notifications.channels.mail.to' => 'ops@example.com',
+        'linkedin-autopost.notifications.channels.mail.mailer' => 'missing-mailer',
+    ]);
+    fakeLinkedInAndChannels();
+
+    expect(LinkedIn::share($this->post)->post_urn)->toBe('urn:li:share:7');
+    Exceptions::assertReported(fn (NotificationFailed $e) => str_starts_with($e->getMessage(), 'Could not send the email: Mailer [missing-mailer] is not defined.'));
+});
+
+it('queues notifications by default', function () {
+    expect(config('linkedin-autopost.notifications.queued'))->toBeTrue();
+});
+
+it('sends at once, without a queue, when queued is off', function () {
+    Queue::fake();
+    enableNotifications('slack');
+    config(['linkedin-autopost.notifications.queued' => false]);
+    fakeLinkedInAndChannels();
+
+    LinkedIn::share($this->post);
+
+    Queue::assertNotPushed(SendNotification::class);
+    Http::assertSent(fn (Request $request) => $request->url() === SLACK);
+});
+
+it('never fails the share when an unqueued channel fails', function () {
+    Exceptions::fake();
+    enableNotifications('slack');
+    config(['linkedin-autopost.notifications.queued' => false]);
+    Http::fake([
+        'https://api.linkedin.com/rest/posts' => Http::response(null, 201, ['x-restli-id' => 'urn:li:share:7']),
+        SLACK => Http::response('invalid_token', 403),
+    ]);
+
+    expect(LinkedIn::share($this->post)->post_urn)->toBe('urn:li:share:7');
+    Exceptions::assertReported(fn (NotificationFailed $e) => $e->getMessage() === 'Slack refused the message: invalid_token');
 });
