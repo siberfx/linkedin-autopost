@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Siberfx\LinkedInAutopost\Livewire;
 
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\View\ComponentAttributeBag;
 use Livewire\Component;
+use Siberfx\LinkedInAutopost\LinkedInAutopostServiceProvider;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Support\ConnectionPresenter;
 use Siberfx\LinkedInAutopost\Support\StatusMessages;
@@ -24,6 +26,8 @@ final class ConnectionCard extends Component
 
     public function disconnect(LinkedInManager $linkedin): void
     {
+        Gate::authorize(LinkedInAutopostServiceProvider::ABILITY);
+
         $revoked = $linkedin->disconnect();
 
         $this->flash = ['type' => 'success', 'message' => $revoked
@@ -42,6 +46,7 @@ final class ConnectionCard extends Component
             'flash' => $this->flash,
             'livewire' => true,
             'attributes' => new ComponentAttributeBag,
+            'canManage' => Gate::allows(LinkedInAutopostServiceProvider::ABILITY),
             'connectUrl' => route($routes.'redirect'),
             'disconnectUrl' => route($routes.'connection.destroy'),
         ]);

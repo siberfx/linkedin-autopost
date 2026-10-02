@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace Siberfx\LinkedInAutopost;
 
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
 
 final class LinkedInAutopostServiceProvider extends ServiceProvider
 {
+    /** Who may connect, disconnect, see the connection and share. Define it in your app. */
+    public const ABILITY = 'manage-linkedin-autopost';
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/linkedin-autopost.php', 'linkedin-autopost');
@@ -26,6 +30,14 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
     {
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'linkedin-autopost');
         Blade::componentNamespace('Siberfx\\LinkedInAutopost\\View\\Components', 'linkedin-autopost');
+
+        // Deny by default. Registered once every provider has booted, so the
+        // app's own definition wins whatever the provider order.
+        $this->app->booted(function (): void {
+            if (! Gate::has(self::ABILITY)) {
+                Gate::define(self::ABILITY, fn ($user = null): bool => false);
+            }
+        });
 
         if (class_exists(\Livewire\Livewire::class)) {
             \Livewire\Livewire::component('linkedin-autopost.connection', Livewire\ConnectionCard::class);

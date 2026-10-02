@@ -33,7 +33,9 @@ return [
         'enabled' => true,
         'prefix' => 'linkedin',
         'name' => 'linkedin-autopost.',
-        'middleware' => ['web', 'auth'],
+        // The gate denies everyone until your app defines it, e.g. in AppServiceProvider::boot():
+        // Gate::define('manage-linkedin-autopost', fn (User $user) => $user->is_admin);
+        'middleware' => ['web', 'auth', 'can:manage-linkedin-autopost'],
         // Where the OAuth callback sends the browser; ?linkedin=connected|cancelled|error|… is appended.
         'after_connect' => '/',
     ],

@@ -6,8 +6,10 @@ namespace Siberfx\LinkedInAutopost\Support;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
 use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
+use Siberfx\LinkedInAutopost\LinkedInAutopostServiceProvider;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 
@@ -35,6 +37,10 @@ final class ShareButtonPresenter
 
     public function disabledReason(): ?string
     {
+        if (Gate::denies(LinkedInAutopostServiceProvider::ABILITY)) {
+            return 'You are not allowed to manage LinkedIn.';
+        }
+
         if (! $this->linkedin->isConnected()) {
             return 'Connect LinkedIn first.';
         }

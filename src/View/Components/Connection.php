@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Siberfx\LinkedInAutopost\View\Components;
 
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\View\Component;
+use Siberfx\LinkedInAutopost\LinkedInAutopostServiceProvider;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Support\ConnectionPresenter;
 use Siberfx\LinkedInAutopost\Support\StatusMessages;
@@ -23,6 +25,7 @@ final class Connection extends Component
             'presenter' => new ConnectionPresenter($connection),
             'flash' => StatusMessages::current(request()),
             'livewire' => false,
+            'canManage' => Gate::allows(LinkedInAutopostServiceProvider::ABILITY),
             'connectUrl' => route($routes.'redirect'),
             'disconnectUrl' => route($routes.'connection.destroy'),
         ]);

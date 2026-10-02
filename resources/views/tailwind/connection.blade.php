@@ -22,7 +22,9 @@
                 <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Not connected</p>
                 <p class="text-sm text-gray-500 dark:text-gray-400">Connect a LinkedIn account to share your content.</p>
             </div>
-            <a href="{{ $connectUrl }}" class="inline-flex items-center rounded-lg bg-[#0A66C2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#004182] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:ring-offset-2">Connect LinkedIn</a>
+            @if ($canManage)
+                <a href="{{ $connectUrl }}" class="inline-flex items-center rounded-lg bg-[#0A66C2] px-4 py-2 text-sm font-semibold text-white hover:bg-[#004182] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0A66C2] focus-visible:ring-offset-2">Connect LinkedIn</a>
+            @endif
         </div>
     @else
         <div class="flex flex-wrap items-center gap-4">
@@ -47,6 +49,7 @@
                 </p>
             </div>
 
+            @if ($canManage)
             <div class="flex gap-2">
                 <a href="{{ $connectUrl }}" class="inline-flex items-center rounded-lg px-3 py-2 text-sm font-semibold {{ $presenter->needsReconnect() ? 'bg-[#0A66C2] text-white hover:bg-[#004182]' : 'border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800' }}">Reconnect</a>
 
@@ -61,6 +64,7 @@
                     </form>
                 @endif
             </div>
+            @endif
         </div>
 
         @if ($connection->status === 'unknown')

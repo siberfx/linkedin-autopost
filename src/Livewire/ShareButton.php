@@ -7,6 +7,7 @@ namespace Siberfx\LinkedInAutopost\Livewire;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -14,6 +15,7 @@ use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
 use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
 use Siberfx\LinkedInAutopost\Exceptions\NotConnected;
 use Siberfx\LinkedInAutopost\Exceptions\NotShareable;
+use Siberfx\LinkedInAutopost\LinkedInAutopostServiceProvider;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 use Siberfx\LinkedInAutopost\Models\LinkedInPost;
 use Siberfx\LinkedInAutopost\Support\ShareButtonPresenter;
@@ -51,6 +53,8 @@ final class ShareButton extends Component
 
     public function share(LinkedInManager $linkedin): void
     {
+        Gate::authorize(LinkedInAutopostServiceProvider::ABILITY);
+
         try {
             $post = $linkedin->share($this->model(), LinkedInPost::TRIGGER_MANUAL);
         } catch (NotConnected|NotShareable|LinkedInRequestFailed $e) {

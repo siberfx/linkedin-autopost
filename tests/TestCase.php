@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Siberfx\LinkedInAutopost\Tests;
 
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
@@ -21,6 +22,14 @@ abstract class TestCase extends Orchestra
         Http::preventStrayRequests();
 
         Relation::morphMap(['post' => Post::class]);
+
+        $this->defineManageGate();
+    }
+
+    /** The package denies everyone by default; most tests act as an allowed admin. */
+    protected function defineManageGate(): void
+    {
+        Gate::define(LinkedInAutopostServiceProvider::ABILITY, fn ($user = null) => true);
     }
 
     protected function getPackageProviders($app): array

@@ -17,7 +17,9 @@
                     <div class="fw-medium">Not connected</div>
                     <div class="text-body-secondary small">Connect a LinkedIn account to share your content.</div>
                 </div>
-                <a href="{{ $connectUrl }}" class="btn btn-primary">Connect LinkedIn</a>
+                @if ($canManage)
+                    <a href="{{ $connectUrl }}" class="btn btn-primary">Connect LinkedIn</a>
+                @endif
             </div>
         @else
             <div class="d-flex flex-wrap align-items-center gap-3">
@@ -42,6 +44,7 @@
                     </div>
                 </div>
 
+                @if ($canManage)
                 <div class="d-flex gap-2">
                     <a href="{{ $connectUrl }}" class="btn {{ $presenter->needsReconnect() ? 'btn-primary' : 'btn-outline-secondary' }}">Reconnect</a>
                     @if ($livewire)
@@ -54,6 +57,7 @@
                         </form>
                     @endif
                 </div>
+                @endif
             </div>
 
             @if ($connection->status === 'unknown')

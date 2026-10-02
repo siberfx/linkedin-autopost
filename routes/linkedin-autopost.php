@@ -11,7 +11,7 @@ use Siberfx\LinkedInAutopost\Http\Controllers\ShareController;
 Route::group([
     'prefix' => (string) config('linkedin-autopost.routes.prefix', 'linkedin'),
     'as' => (string) config('linkedin-autopost.routes.name', 'linkedin-autopost.'),
-    'middleware' => (array) config('linkedin-autopost.routes.middleware', ['web', 'auth']),
+    'middleware' => (array) config('linkedin-autopost.routes.middleware', ['web', 'auth', 'can:manage-linkedin-autopost']),
 ], function (): void {
     Route::get('redirect', [OAuthController::class, 'redirect'])->name('redirect');
     Route::get('callback', [OAuthController::class, 'callback'])->name('callback');
