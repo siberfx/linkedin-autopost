@@ -20,6 +20,10 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        if (config('linkedin-autopost.routes.enabled', true)) {
+            $this->loadRoutesFrom(__DIR__.'/../routes/linkedin-autopost.php');
+        }
+
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__.'/../config/linkedin-autopost.php' => config_path('linkedin-autopost.php'),
