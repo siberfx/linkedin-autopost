@@ -16,6 +16,8 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
             \Siberfx\LinkedInAutopost\Contracts\TokenStore::class,
             fn ($app) => $app->make((string) config('linkedin-autopost.token_store')),
         );
+
+        $this->app->scoped(LinkedInManager::class);
     }
 
     public function boot(): void
