@@ -46,6 +46,11 @@ return [
         'queue' => null,
     ],
 
+    'ui' => [
+        // tailwind | bootstrap | the name of a folder of published views
+        'theme' => env('LINKEDIN_UI_THEME', 'tailwind'),
+    ],
+
     'token_store' => DatabaseTokenStore::class,
 
     'http' => [
