@@ -6,6 +6,7 @@ namespace Siberfx\LinkedInAutopost\Tests;
 
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Http;
+use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Siberfx\LinkedInAutopost\Facades\LinkedIn;
 use Siberfx\LinkedInAutopost\LinkedInAutopostServiceProvider;
@@ -24,7 +25,10 @@ abstract class TestCase extends Orchestra
 
     protected function getPackageProviders($app): array
     {
-        return [LinkedInAutopostServiceProvider::class];
+        return array_values(array_filter([
+            class_exists(LivewireServiceProvider::class) ? LivewireServiceProvider::class : null,
+            LinkedInAutopostServiceProvider::class,
+        ]));
     }
 
     protected function getPackageAliases($app): array

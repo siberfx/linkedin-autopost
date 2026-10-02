@@ -27,6 +27,11 @@ final class LinkedInAutopostServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'linkedin-autopost');
         Blade::componentNamespace('Siberfx\\LinkedInAutopost\\View\\Components', 'linkedin-autopost');
 
+        if (class_exists(\Livewire\Livewire::class)) {
+            \Livewire\Livewire::component('linkedin-autopost.connection', Livewire\ConnectionCard::class);
+            \Livewire\Livewire::component('linkedin-autopost.share-button', Livewire\ShareButton::class);
+        }
+
         if (config('linkedin-autopost.routes.enabled', true)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/linkedin-autopost.php');
         }
