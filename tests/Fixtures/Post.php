@@ -10,6 +10,8 @@ use Siberfx\LinkedInAutopost\Posts\LinkPost;
 
 final class Post extends Model implements ShareableOnLinkedIn
 {
+    use \Siberfx\LinkedInAutopost\Concerns\PostsToLinkedIn;
+
     protected $guarded = [];
 
     protected $casts = ['status' => PostStatus::class];
