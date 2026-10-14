@@ -7,8 +7,10 @@ namespace Siberfx\LinkedInAutopost\Stores;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\DB;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
+use Siberfx\LinkedInAutopost\Data\Page;
 use Siberfx\LinkedInAutopost\Data\StoredConnection;
 use Siberfx\LinkedInAutopost\Models\LinkedInConnection;
+use Siberfx\LinkedInAutopost\Support\Columns;
 
 final class DatabaseTokenStore implements TokenStore
 {
@@ -41,24 +43,33 @@ final class DatabaseTokenStore implements TokenStore
             scopes: array_values($row->scopes ?? []), // @phpstan-ignore arrayValues.list (stored JSON is not guaranteed to be a list)
             expiresAt: $row->expires_at,
             connectedAt: $row->connected_at,
+            pages: Page::listFrom($row->pages ?? []),
+            selectedPages: array_values(array_filter($row->selected_pages ?? [], 'is_string')),
         );
     }
 
     public function put(StoredConnection $connection): void
     {
-        DB::transaction(function () use ($connection): void {
-            LinkedInConnection::query()->delete();
+        $attributes = [
+            'access_token' => $connection->accessToken,
+            'author_urn' => $connection->authorUrn,
+            'name' => $connection->name,
+            'email' => $connection->email,
+            'picture' => $connection->picture,
+            'scopes' => $connection->scopes,
+            'expires_at' => $connection->expiresAt,
+            'connected_at' => $connection->connectedAt,
+        ];
 
-            LinkedInConnection::query()->create([
-                'access_token' => $connection->accessToken,
-                'author_urn' => $connection->authorUrn,
-                'name' => $connection->name,
-                'email' => $connection->email,
-                'picture' => $connection->picture,
-                'scopes' => $connection->scopes,
-                'expires_at' => $connection->expiresAt,
-                'connected_at' => $connection->connectedAt,
-            ]);
+        // Until the 1.2 migration runs there is only the member's profile to post to.
+        if (Columns::has('linkedin_connections', 'pages')) {
+            $attributes['pages'] = array_map(fn (Page $page) => $page->toArray(), $connection->pages);
+            $attributes['selected_pages'] = $connection->selectedPages;
+        }
+
+        DB::transaction(function () use ($attributes): void {
+            LinkedInConnection::query()->delete();
+            LinkedInConnection::query()->create($attributes);
         });
     }
 

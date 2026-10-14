@@ -8,11 +8,13 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Siberfx\LinkedInAutopost\Support\Columns;
 
 /**
  * @property string $shareable_type
  * @property int|string $shareable_id
  * @property string|null $post_urn
+ * @property string|null $author_urn The page the post went to; null for posts made before 1.2.
  * @property string $status
  * @property string $trigger
  * @property string|null $error
@@ -62,5 +64,22 @@ final class LinkedInPost extends Model
     public function scopePosted(Builder $query): Builder
     {
         return $query->where('status', self::STATUS_POSTED);
+    }
+
+    /**
+     * Posts that went to one page (author URN). Posts made before 1.2 have no
+     * page and count as the member's profile, where they all went.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeForPage(Builder $query, string $page, ?string $memberUrn = null): Builder
+    {
+        if (! Columns::has($this->getTable(), 'author_urn')) {
+            return $query;
+        }
+
+        return $query->where(fn (Builder $query) => $query->where('author_urn', $page)
+            ->when($page === $memberUrn, fn (Builder $query) => $query->orWhereNull('author_urn')));
     }
 }

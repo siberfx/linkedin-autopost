@@ -28,6 +28,7 @@ final class Connection extends Component
             'canManage' => Gate::allows(LinkedInAutopostServiceProvider::ABILITY),
             'connectUrl' => route($routes.'redirect'),
             'disconnectUrl' => route($routes.'connection.destroy'),
+            'pagesUrl' => route($routes.'pages.update'),
         ]);
     }
 }

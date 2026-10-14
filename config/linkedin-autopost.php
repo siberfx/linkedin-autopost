@@ -24,6 +24,19 @@ return [
     'scopes' => ['openid', 'profile', 'email', 'w_member_social'],
 
     /*
+    | Also offer the LinkedIn Pages (organizations) the member administers as
+    | places to post. Asks for organization_scopes too, which need LinkedIn's
+    | "Community Management API" product on your app: without it, LinkedIn
+    | refuses the login. Off: the member's own profile is the only page.
+    */
+    'organizations' => [
+        'enabled' => (bool) env('LINKEDIN_ORGANIZATIONS', false),
+        'scopes' => ['r_organization_admin', 'w_organization_social'],
+        // Organization roles that may post as the Page.
+        'roles' => ['ADMINISTRATOR', 'CONTENT_ADMINISTRATOR'],
+    ],
+
+    /*
     | LinkedIn-Version header (YYYYMM). LinkedIn retires each version about a
     | year after release; move this forward when they announce a sunset.
     */

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Siberfx\LinkedInAutopost\Console;
 
 use Illuminate\Console\Command;
+use Siberfx\LinkedInAutopost\Data\Page;
 use Siberfx\LinkedInAutopost\LinkedInManager;
 
 final class StatusCommand extends Command
@@ -33,6 +34,13 @@ final class StatusCommand extends Command
             ['Expires', $connection->expiresAt?->toDateTimeString() ?? '—'],
             ['Days left', (string) ($connection->daysLeft() ?? '—')],
         ]);
+
+        $this->table(['Selected', 'Page', 'Type', 'Id'], array_map(fn (Page $page) => [
+            $connection->isSelected($page) ? '✓' : '',
+            $page->name ?? '—',
+            $page->type,
+            $page->id,
+        ], $connection->pages));
 
         return self::SUCCESS;
     }

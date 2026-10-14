@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Queue\InteractsWithQueue;
 use InvalidArgumentException;
 use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
+use Siberfx\LinkedInAutopost\Data\Page;
 use Siberfx\LinkedInAutopost\Events\ShareFailed;
 use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
 use Siberfx\LinkedInAutopost\Exceptions\NotConnected;
@@ -49,24 +50,54 @@ final class ShareOnLinkedIn implements ShouldBeUnique, ShouldQueue
     {
         $model = $this->resolve();
 
-        // Unpublished, deleted, disconnected or already posted since the
-        // job was queued: nothing to do.
-        if ($model === null || ! $model->isLiveForLinkedIn() || ! $linkedin->isConnected() || $linkedin->wasPosted($model)) {
+        // Unpublished, deleted or disconnected since the job was queued: nothing to do.
+        if ($model === null || ! $model->isLiveForLinkedIn() || ! $linkedin->isConnected()) {
             return;
         }
 
-        try {
-            $linkedin->share($model, LinkedInPost::TRIGGER_AUTO);
-        } catch (LinkedInRequestFailed $e) {
-            // 429, 5xx and network errors (status 0) are retried; other 4xx never succeed.
-            if (! $e->isPermanent()) {
-                throw $e;
-            }
+        // A retry never posts twice to a page that already has the post.
+        $pending = array_values(array_filter(
+            $linkedin->selectedPages(),
+            fn (Page $page) => ! $linkedin->wasPosted($model, $page->id),
+        ));
 
-            $this->fail($e);
-        } catch (InvalidArgumentException|NotShareable|NotConnected $e) {
-            $this->fail($e);
+        $retry = null;
+        $permanent = null;
+
+        foreach ($pending as $page) {
+            try {
+                $linkedin->shareToPage($model, $page->id, LinkedInPost::TRIGGER_AUTO);
+            } catch (LinkedInRequestFailed $e) {
+                // 429, 5xx and network errors (status 0) are retried; other 4xx never succeed.
+                if ($e->isPermanent()) {
+                    $permanent ??= $this->onPage($page, $e);
+                } else {
+                    $retry ??= $e;
+                }
+            } catch (InvalidArgumentException|NotShareable|NotConnected $e) {
+                $this->fail($e);
+
+                return;
+            }
         }
+
+        if ($retry !== null) {
+            throw $retry;
+        }
+
+        if ($permanent !== null) {
+            $this->fail($permanent);
+        }
+    }
+
+    /** Names the page when there are several, so the failure says where it happened. */
+    private function onPage(Page $page, LinkedInRequestFailed $e): LinkedInRequestFailed
+    {
+        if ($page->type === Page::TYPE_MEMBER) {
+            return $e;
+        }
+
+        return new LinkedInRequestFailed(($page->name ?? $page->id).': '.$e->getMessage(), $e->status);
     }
 
     /** One queued share per model: quick publish/unpublish/publish cycles cannot queue two posts. */

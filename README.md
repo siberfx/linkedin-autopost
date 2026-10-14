@@ -10,6 +10,7 @@ when they go live, or whenever you choose. Posts go through LinkedIn's Posts API
 a preview.
 
 - One site-wide LinkedIn **member** account (the person who clicks Connect).
+- Post to the member's profile, to the LinkedIn **Pages** they administer, or to several at once: the connection lists the pages and you choose (optional, see [Choosing pages](#choosing-pages-profile-and-linkedin-pages)).
 - Auto-post when a model becomes live, at most once, off until you switch it on.
 - Ready-made connection card and share button (Tailwind or Bootstrap 5, Blade or Livewire), plus routes, JSON endpoints, Artisan commands and events if you prefer to build your own.
 - Headless mode (`LINKEDIN_UI=false`) when you want the package without any UI.
@@ -23,6 +24,7 @@ Requires PHP 8.4+ and Laravel 12 or 13.
 - [1. Set up the LinkedIn app](#1-set-up-the-linkedin-app)
 - [2. Install](#2-install)
 - [3. Connect](#3-connect)
+  - [Choosing pages: profile and LinkedIn Pages](#choosing-pages-profile-and-linkedin-pages)
 - [4. Make a model shareable](#4-make-a-model-shareable)
 - [5. Share on demand](#5-share-on-demand)
 - [6. Ready-made admin UI](#6-ready-made-admin-ui)
@@ -94,6 +96,9 @@ article: it appears on LinkedIn. Each step is explained below.
    `https://example.com/linkedin/callback` — scheme, host (with or without `www`), path, no trailing slash.
    Add one per environment (`https://myapp.test/linkedin/callback` for local).
 4. Copy the **Client ID** and **Primary Client Secret**.
+5. Optional, to post as LinkedIn Pages (company pages): request the **Community Management API**
+   product. LinkedIn reviews it; once approved, set `LINKEDIN_ORGANIZATIONS=true`
+   (see [Choosing pages](#choosing-pages-profile-and-linkedin-pages)).
 
 > **"The redirect_uri does not match the registered value"** on LinkedIn's page means the URL your
 > app sent is not in that list character for character. Run `php artisan route:list --name=linkedin-autopost.callback`
@@ -114,7 +119,7 @@ php artisan linkedin:install --theme=bootstrap   # no question asked
 php artisan linkedin:install --headless          # no UI at all, see section 12
 ```
 
-It publishes `config/linkedin-autopost.php` and the two migrations, writes `LINKEDIN_UI_THEME` (or
+It publishes `config/linkedin-autopost.php` and the migrations, writes `LINKEDIN_UI_THEME` (or
 `LINKEDIN_UI=false`) to `.env` when it is not there yet, and prints the redirect URI to register and
 the gate to define. To publish pieces by hand:
 
@@ -228,6 +233,102 @@ if (LinkedIn::isConnected()) {
 `connection()` asks LinkedIn (token introspection and userinfo) at most once every
 `status_cache_ttl` seconds (300 by default) and serves the cached status in between.
 `isConnected()` only checks that a token is stored and never calls LinkedIn.
+
+### Choosing pages: profile and LinkedIn Pages
+
+A connection can post to more than one place: the member's own **profile**, and every LinkedIn
+**Page** (organization) the member administers. Right after connecting, the connection lists them as
+`pages`, and the people managing the integration choose one or several of them. Every share — automatic,
+the button, the endpoint, `LinkedIn::share()` — then goes to **each selected page**.
+
+Until someone chooses, only the profile is selected, so nothing changes for existing setups.
+
+**Switch on LinkedIn Pages.** Listing and posting to Pages needs the `r_organization_admin` and
+`w_organization_social` scopes, which LinkedIn only grants to apps with the **Community Management API**
+product. Once your app has it:
+
+```dotenv
+LINKEDIN_ORGANIZATIONS=true
+```
+
+and connect again. The login then asks for those scopes too, and the callback reads the Pages where the
+member is an `ADMINISTRATOR` or `CONTENT_ADMINISTRATOR` (`organizations.roles`). Without the flag, the
+profile is the only page and LinkedIn is never asked about Pages. If the Pages cannot be read
+(no permission, LinkedIn down) the connection still succeeds with the profile only, and a warning is logged.
+
+**What the connection returns.** `GET /linkedin/connection`, `LinkedIn::connection()->toArray()`, the
+return value of `LinkedIn::completeConnection()` and the `Connected` event all carry the pages:
+
+```json
+{
+  "data": {
+    "connected": true,
+    "status": "active",
+    "name": "Ada Lovelace",
+    "author_urn": "urn:li:person:abc123",
+    "pages": [
+      { "id": "urn:li:person:abc123", "type": "member", "name": "Ada Lovelace", "picture": "https://media.licdn.com/…", "selected": true },
+      { "id": "urn:li:organization:2414183", "type": "organization", "name": "Acme Inc.", "picture": null, "selected": false },
+      { "id": "urn:li:organization:5550101", "type": "organization", "name": "Acme Careers", "picture": null, "selected": false }
+    ],
+    "selected_pages": ["urn:li:person:abc123"],
+    "…": "…"
+  }
+}
+```
+
+A page's `id` is the author URN posts are sent as. `GET /linkedin/connection/pages` returns just
+`pages` and `selected_pages`.
+
+**Choose the pages.** Send the ids to keep, one or several:
+
+```bash
+PUT /linkedin/connection/pages
+{ "pages": ["urn:li:person:abc123", "urn:li:organization:2414183"] }
+```
+
+It answers `200` with the updated connection, or `422` when the list is empty, an id is not one of the
+connection's pages, or nothing is connected. From PHP:
+
+```php
+use Siberfx\LinkedInAutopost\Facades\LinkedIn;
+
+LinkedIn::pages();            // list<Page>: id, type (member|organization), name, picture
+LinkedIn::selectedPages();    // list<Page> posts go to
+LinkedIn::selectPages(['urn:li:organization:2414183', 'urn:li:organization:5550101']);
+```
+
+The [connection card](#settings-page-the-connection-card) shows a **Post to** checkbox list (Blade
+and Livewire) as soon as there is more than one page, so the ready-made UI needs no extra work.
+
+**Share to other pages once**, without changing the selection:
+
+```php
+LinkedIn::shareToPages($article, ['urn:li:organization:2414183']);   // Collection of LinkedInPost
+LinkedIn::shareToPage($article, 'urn:li:organization:2414183');      // one page, throws on failure
+LinkedIn::wasPosted($article, 'urn:li:organization:2414183');        // posted to that page?
+```
+
+The share endpoint takes the same list: `POST /linkedin/share/article/42` with `{"pages": [...]}`, and
+`php artisan linkedin:share article 42 --page=urn:li:organization:2414183` does it from the console.
+
+**When one page fails.** With several pages, each failure is recorded as a `failed` row for that page and
+the other pages still post; `share()` returns the first post that went out, and only throws when every
+page failed. The share endpoint reports each page in `data.posts`. The auto-post job retries only the pages
+that have not posted yet, so a retry never posts twice to the same page. Each `LinkedInPost` row records
+its page in `author_urn`.
+
+**Upgrading to 1.2.** Pages need two new columns on `linkedin_connections` and one on `linkedin_posts`.
+Publish the new migration (already-published migrations are skipped) and run it:
+
+```bash
+php artisan vendor:publish --tag=linkedin-autopost-migrations
+php artisan migrate
+```
+
+Until it runs, everything keeps working as before: posts go to the profile only. A custom
+[token store](#13-keeping-the-token-somewhere-else) that does not keep `pages` and `selectedPages`
+behaves the same way.
 
 ## 4. Make a model shareable
 
@@ -362,7 +463,8 @@ fetch the link's own preview; the title and description you set are what it show
 ```php
 use Siberfx\LinkedInAutopost\Facades\LinkedIn;
 
-LinkedIn::share($article);           // now; returns the LinkedInPost record (re-sharing is allowed)
+LinkedIn::share($article);           // now, to every selected page; returns the first LinkedInPost (re-sharing is allowed)
+LinkedIn::shareToPages($article);    // the same, returning one LinkedInPost per page
 LinkedIn::queue($article);           // in the background
 LinkedIn::wasPosted($article);       // bool, same as $article->wasPostedToLinkedIn()
 $article->wasPostedToLinkedIn();     // bool
@@ -440,6 +542,7 @@ LinkedInPost::query()                                   // every failure this we
 | `status` | `posted`, `failed` |
 | `trigger` | `auto` (auto-post), `manual` (button, endpoint, `share()`), `console` (`linkedin:share`) |
 | `post_urn` | e.g. `urn:li:share:7212345678901234567`; open it at `https://www.linkedin.com/feed/update/{post_urn}/` |
+| `author_urn` | The page it went to, e.g. `urn:li:organization:2414183`; `null` for posts made before 1.2 (the profile) |
 | `error` | LinkedIn's message for a failed automatic share |
 
 ## 6. Ready-made admin UI
@@ -709,12 +812,14 @@ Event::listen(Shared::class, function (Shared $event) {
 |---|---|---|
 | GET | `/linkedin/redirect` | Redirect to LinkedIn's consent screen |
 | GET | `/linkedin/callback` | Redirect to `after_connect` with `?linkedin=…` |
-| GET | `/linkedin/connection` | `{"data": {connected, status, name, email, picture, author_urn, scopes, connected_at, expires_at, days_left}}` |
+| GET | `/linkedin/connection` | `{"data": {connected, status, name, email, picture, author_urn, scopes, connected_at, expires_at, pages, selected_pages, days_left}}` |
 | DELETE | `/linkedin/connection` | Revokes and forgets the token; `{"message", "revoked", "data"}` |
-| POST | `/linkedin/share/{type}/{id}` | `201 {"data": {post_urn, posted_at}}` (`post_urn` is `null` when LinkedIn accepted the post without returning its id), `422` not connected / not live / invalid post URL, `502` LinkedIn refused, `404` unknown |
+| GET | `/linkedin/connection/pages` | `{"data": {pages, selected_pages}}`; see [Choosing pages](#choosing-pages-profile-and-linkedin-pages) |
+| PUT | `/linkedin/connection/pages` | Body `{"pages": [id, …]}`; `200 {"message", "data"}`, `422` empty, unknown page or not connected |
+| POST | `/linkedin/share/{type}/{id}` | Optional body `{"pages": [id, …]}`. `201 {"data": {post_urn, posted_at, posts}}` (`post_urn` is the first page's, `null` when LinkedIn accepted the post without returning its id; `posts` has `page, status, post_urn, error` per page), `422` not connected / not live / invalid post URL / unknown page, `502` LinkedIn refused every page, `404` unknown |
 
 Every endpoint answers `403` to people the `manage-linkedin-autopost` gate refuses. Route names:
-`linkedin-autopost.redirect`, `.callback`, `.connection.show`, `.connection.destroy`, `.share`, `.share.signed`.
+`linkedin-autopost.redirect`, `.callback`, `.connection.show`, `.connection.destroy`, `.pages.show`, `.pages.update`, `.share`, `.share.signed`.
 
 `status` is `active`, `expired`, `revoked` or `unknown` (LinkedIn unreachable). The share endpoint
 accepts **morph-map aliases only**:
@@ -740,12 +845,28 @@ Sample responses:
     "scopes": ["openid", "profile", "email", "w_member_social"],
     "connected_at": "2026-09-01T10:00:00+00:00",
     "expires_at": "2026-10-31T10:00:00+00:00",
+    "pages": [
+      { "id": "urn:li:person:abc123", "type": "member", "name": "Ada Lovelace", "picture": "https://media.licdn.com/…", "selected": true }
+    ],
+    "selected_pages": ["urn:li:person:abc123"],
     "days_left": 29
   }
 }
 
 // POST /linkedin/share/article/42 → 201
-{ "message": "Shared on LinkedIn.", "data": { "post_urn": "urn:li:share:7212345678901234567", "posted_at": "2026-10-02T09:15:00+00:00" } }
+{
+  "message": "Shared on LinkedIn.",
+  "data": {
+    "post_urn": "urn:li:share:7212345678901234567",
+    "posted_at": "2026-10-02T09:15:00+00:00",
+    "posts": [
+      { "page": "urn:li:person:abc123", "status": "posted", "post_urn": "urn:li:share:7212345678901234567", "error": null }
+    ]
+  }
+}
+
+// PUT /linkedin/connection/pages {"pages": ["urn:li:organization:2414183"]} → 200
+{ "message": "LinkedIn pages saved.", "data": { "selected_pages": ["urn:li:organization:2414183"], "…": "…" } }
 
 // POST /linkedin/share/article/43 → 422
 { "message": "This item is not live, so it cannot be shared on LinkedIn." }
@@ -844,7 +965,7 @@ will not post twice, but there is no reason to run the check).
 
 ```bash
 php artisan linkedin:status
-php artisan linkedin:share article 42 [--force]
+php artisan linkedin:share article 42 [--page=urn:li:organization:2414183] [--force]
 php artisan linkedin:disconnect [--force]
 php artisan linkedin:check-token [--days=7]
 php artisan linkedin:test-notification [--channel=slack]
@@ -852,8 +973,8 @@ php artisan linkedin:test-notification [--channel=slack]
 
 | Command | Does |
 |---|---|
-| `linkedin:status` | Table of the member, author URN, status, scopes, issue and expiry dates, days left. |
-| `linkedin:share {model} {id}` | Shares now (`trigger` = `console`). `model` is a morph alias or a class name. Refuses an already posted model unless `--force`. |
+| `linkedin:status` | Table of the member, author URN, status, scopes, issue and expiry dates, days left; then the pages, with the selected ones ticked. |
+| `linkedin:share {model} {id}` | Shares now to the selected pages (`trigger` = `console`), or to the `--page` ids given (repeat for several). `model` is a morph alias or a class name. Refuses an already posted model unless `--force`. |
 | `linkedin:disconnect` | Revokes and forgets the token; asks first unless `--force`. |
 | `linkedin:check-token` | Fires `TokenExpiringSoon` when fewer than `--days` (default `expiry_warning_days`) remain or the token is expired/revoked. |
 | `linkedin:test-notification` | Sends a test message to the enabled Telegram/Slack/email/custom channels. |
@@ -1304,6 +1425,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Crypt;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
+use Siberfx\LinkedInAutopost\Data\Page;
 use Siberfx\LinkedInAutopost\Data\StoredConnection;
 
 final class SettingsTokenStore implements TokenStore
@@ -1333,6 +1455,8 @@ final class SettingsTokenStore implements TokenStore
             scopes: $data['scopes'],
             expiresAt: $data['expires_at'] ? CarbonImmutable::parse($data['expires_at']) : null,
             connectedAt: $data['connected_at'] ? CarbonImmutable::parse($data['connected_at']) : null,
+            pages: Page::listFrom($data['pages'] ?? []),
+            selectedPages: $data['selected_pages'] ?? [],
         );
     }
 
@@ -1347,6 +1471,8 @@ final class SettingsTokenStore implements TokenStore
             'scopes' => $connection->scopes,
             'expires_at' => $connection->expiresAt?->toIso8601String(),
             'connected_at' => $connection->connectedAt?->toIso8601String(),
+            'pages' => array_map(fn (Page $page) => $page->toArray(), $connection->pages),
+            'selected_pages' => $connection->selectedPages,
         ]))]);
     }
 
@@ -1363,6 +1489,9 @@ final class SettingsTokenStore implements TokenStore
 ```
 
 Always encrypt the token: it can post as the connected member.
+
+Keep `pages` and `selectedPages` as well, as above, so the [chosen pages](#choosing-pages-profile-and-linkedin-pages)
+survive. A store that drops them still works: the profile is then the only page.
 
 The connection status is cached as plain data (never objects), so it works with Laravel 13's default
 `cache.serializable_classes = false`.
@@ -1447,6 +1576,9 @@ Define the `manage-linkedin-autopost` gate (or act as a user it allows) in tests
 | `client_id`, `client_secret` | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` | — | Your LinkedIn app's credentials. |
 | `redirect_uri` | `LINKEDIN_REDIRECT_URI` | the callback route | Must match a registered redirect URL exactly. |
 | `scopes` | | `openid profile email w_member_social` | |
+| `organizations.enabled` | `LINKEDIN_ORGANIZATIONS` | `false` | Offer the LinkedIn Pages the member administers; needs the Community Management API product. |
+| `organizations.scopes` | | `r_organization_admin w_organization_social` | Added to `scopes` when enabled. |
+| `organizations.roles` | | `ADMINISTRATOR, CONTENT_ADMINISTRATOR` | Roles that make a Page selectable. |
 | `api_version` | `LINKEDIN_API_VERSION` | `202609` | `LinkedIn-Version` header. |
 | `visibility` | `LINKEDIN_VISIBILITY` | `PUBLIC` | or `CONNECTIONS`. |
 | `routes.enabled` | | `true` | `false` registers no routes. |
@@ -1490,6 +1622,9 @@ Define the `manage-linkedin-autopost` gate (or act as a user it allows) in tests
 | Email not arriving | Test the app's mail first (`MAIL_MAILER`, `MAIL_FROM_ADDRESS`); `LINKEDIN_NOTIFY_MAIL_TO` must hold a valid address. |
 | Telegram *chat not found* | The bot is not in the chat, or the chat id is wrong (groups are negative). |
 | Not connected after rotating `APP_KEY` | The stored token can no longer be decrypted: connect again. |
+| Only the profile is listed under `pages` | `LINKEDIN_ORGANIZATIONS=true` is not set, the app lacks the Community Management API product, the member is not an admin of the Page, or you have not connected again since switching it on. The log has *Could not list the LinkedIn Pages of the member* when LinkedIn refused. |
+| `?linkedin=error&reason=…r_organization_admin…` | `LINKEDIN_ORGANIZATIONS=true` but the app is not approved for the Community Management API yet: switch it off until it is. |
+| A Page share answers *403* | The member lost the admin role on that Page, or `w_organization_social` was not granted: connect again and check `linkedin:status`. |
 
 ## Testing
 

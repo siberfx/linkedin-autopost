@@ -8,14 +8,20 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Siberfx\LinkedInAutopost\Data\Page;
 use Siberfx\LinkedInAutopost\Data\StoredConnection;
 use Siberfx\LinkedInAutopost\Exceptions\LinkedInRequestFailed;
 use Siberfx\LinkedInAutopost\Exceptions\NotConfigured;
 use Throwable;
 
-/** Everything that talks to LinkedIn's OAuth and identity endpoints. */
+/** Everything that talks to LinkedIn's OAuth, identity and organization endpoints. */
 final class OAuthClient
 {
+    private const ORGANIZATION_ACLS = 'https://api.linkedin.com/rest/organizationAcls';
+
+    private const ORGANIZATIONS = 'https://api.linkedin.com/rest/organizations/';
+
     private const AUTHORIZE = 'https://www.linkedin.com/oauth/v2/authorization';
 
     private const TOKEN = 'https://www.linkedin.com/oauth/v2/accessToken';
@@ -45,7 +51,7 @@ final class OAuthClient
             'client_id' => $clientId,
             'redirect_uri' => $this->redirectUri(),
             'state' => $state,
-            'scope' => implode(' ', (array) config('linkedin-autopost.scopes', [])),
+            'scope' => implode(' ', $this->requestedScopes()),
         ], '', '&', PHP_QUERY_RFC3986);
     }
 
@@ -86,17 +92,95 @@ final class OAuthClient
 
         $now = CarbonImmutable::now();
         $expiresIn = $token->json('expires_in');
+        $member = new Page(
+            id: 'urn:li:person:'.$sub,
+            type: Page::TYPE_MEMBER,
+            name: self::stringOrNull($profile->json('name')),
+            picture: self::stringOrNull($profile->json('picture')),
+        );
 
         return new StoredConnection(
             accessToken: $accessToken,
-            authorUrn: 'urn:li:person:'.$sub,
-            name: self::stringOrNull($profile->json('name')),
+            authorUrn: $member->id,
+            name: $member->name,
             email: self::stringOrNull($profile->json('email')),
-            picture: self::stringOrNull($profile->json('picture')),
+            picture: $member->picture,
             scopes: self::scopes($token->json('scope')),
             expiresAt: is_numeric($expiresIn) ? $now->addSeconds((int) $expiresIn) : null,
             connectedAt: $now,
+            pages: [$member, ...$this->organizations($accessToken)],
+            // Posts keep going to the member's profile until other pages are chosen.
+            selectedPages: [$member->id],
         );
+    }
+
+    /**
+     * The LinkedIn Pages the member may post as, when organizations are
+     * enabled. Never throws: a page lookup that fails must not fail connecting,
+     * so it logs and returns what it has.
+     *
+     * @return list<Page>
+     */
+    public function organizations(string $token): array
+    {
+        if (! config('linkedin-autopost.organizations.enabled', false)) {
+            return [];
+        }
+
+        try {
+            $acls = $this->rest($token)->get(self::ORGANIZATION_ACLS, [
+                'q' => 'roleAssignee',
+                'state' => 'APPROVED',
+                'count' => 100,
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('Could not list the LinkedIn Pages of the member.', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        if ($acls->failed()) {
+            Log::warning('Could not list the LinkedIn Pages of the member.', ['status' => $acls->status(), 'error' => $acls->body()]);
+
+            return [];
+        }
+
+        $roles = array_map('strval', (array) config('linkedin-autopost.organizations.roles', ['ADMINISTRATOR', 'CONTENT_ADMINISTRATOR']));
+        $urns = [];
+
+        foreach ((array) $acls->json('elements', []) as $acl) {
+            // "organization" since the versioned API; "organizationalTarget" before it.
+            $urn = is_array($acl) ? ($acl['organization'] ?? $acl['organizationalTarget'] ?? null) : null;
+
+            if (is_string($urn) && str_starts_with($urn, 'urn:li:organization:') && in_array($acl['role'] ?? null, $roles, true)) {
+                $urns[$urn] = true;
+            }
+        }
+
+        return array_map(fn (string $urn) => new Page(
+            id: $urn,
+            type: Page::TYPE_ORGANIZATION,
+            name: $this->organizationName($token, $urn),
+        ), array_keys($urns));
+    }
+
+    private function organizationName(string $token, string $urn): ?string
+    {
+        $organization = $this->jsonOrNull(fn () => $this->rest($token)->get(self::ORGANIZATIONS.substr($urn, strlen('urn:li:organization:'))));
+
+        return self::stringOrNull($organization['localizedName'] ?? null);
+    }
+
+    /** @return list<string> The configured scopes, plus the organization scopes when organizations are enabled. */
+    public function requestedScopes(): array
+    {
+        $scopes = array_map('strval', (array) config('linkedin-autopost.scopes', []));
+
+        if (config('linkedin-autopost.organizations.enabled', false)) {
+            $scopes = [...$scopes, ...array_map('strval', (array) config('linkedin-autopost.organizations.scopes', []))];
+        }
+
+        return array_values(array_unique($scopes));
     }
 
     /** @return array<string, mixed>|null */
@@ -158,6 +242,15 @@ final class OAuthClient
     private function http(): PendingRequest
     {
         return Http::timeout((int) config('linkedin-autopost.http.timeout', 20));
+    }
+
+    /** The versioned REST API (/rest/…) needs these headers. */
+    private function rest(string $token): PendingRequest
+    {
+        return $this->http()->withToken($token)->acceptJson()->withHeaders([
+            'X-Restli-Protocol-Version' => '2.0.0',
+            'LinkedIn-Version' => (string) config('linkedin-autopost.api_version', '202609'),
+        ]);
     }
 
     /**

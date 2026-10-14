@@ -17,6 +17,7 @@ final class ShareCommand extends Command
     protected $signature = 'linkedin:share
         {model : Morph alias or model class}
         {id : Primary key}
+        {--page=* : A page id (author URN) to share to instead of the selected pages; repeat for several}
         {--force : Share again even if it was already posted}';
 
     protected $description = 'Share a model on LinkedIn now';
@@ -49,19 +50,30 @@ final class ShareCommand extends Command
             return self::FAILURE;
         }
 
+        $pages = array_values(array_filter(array_map('strval', (array) $this->option('page'))));
+
         try {
-            $post = $linkedin->share($model, LinkedInPost::TRIGGER_CONSOLE);
+            $records = $linkedin->shareToPages($model, $pages !== [] ? $pages : null, LinkedInPost::TRIGGER_CONSOLE);
         } catch (Throwable $e) {
             $this->components->error($e->getMessage());
 
             return self::FAILURE;
         }
 
-        $this->components->info($post->post_urn !== null
-            ? "Shared on LinkedIn: {$post->post_urn}"
-            : 'Shared on LinkedIn (LinkedIn returned no post id).');
+        foreach ($records as $post) {
+            $page = $post->getAttributes()['author_urn'] ?? null;
+            $where = $records->count() > 1 && is_string($page) ? " ({$page})" : '';
 
-        return self::SUCCESS;
+            if ($post->status === LinkedInPost::STATUS_FAILED) {
+                $this->components->error("Not shared{$where}: {$post->error}");
+            } else {
+                $this->components->info($post->post_urn !== null
+                    ? "Shared on LinkedIn{$where}: {$post->post_urn}"
+                    : "Shared on LinkedIn{$where} (LinkedIn returned no post id).");
+            }
+        }
+
+        return $records->contains('status', LinkedInPost::STATUS_FAILED) ? self::FAILURE : self::SUCCESS;
     }
 
     private function stringArgument(string $name): string

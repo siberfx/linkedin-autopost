@@ -17,6 +17,8 @@ Route::group([
     Route::get('callback', [OAuthController::class, 'callback'])->name('callback');
     Route::get('connection', [ConnectionController::class, 'show'])->name('connection.show');
     Route::delete('connection', [ConnectionController::class, 'destroy'])->name('connection.destroy');
+    Route::get('connection/pages', [ConnectionController::class, 'pages'])->name('pages.show');
+    Route::put('connection/pages', [ConnectionController::class, 'updatePages'])->name('pages.update');
     Route::post('share', [ShareController::class, 'signed'])
         ->middleware(ValidateSignature::class)
         ->name('share.signed');

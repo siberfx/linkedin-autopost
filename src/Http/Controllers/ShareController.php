@@ -44,19 +44,34 @@ final class ShareController extends Controller
         $model = $class::query()->find($id);
         abort_if($model === null, 404);
 
+        // Optional "pages": share to these pages this once instead of the selected ones.
+        $pages = $request->input('pages');
+
         try {
-            $post = $linkedin->share($model, LinkedInPost::TRIGGER_MANUAL);
+            $records = $linkedin->shareToPages($model, is_array($pages) ? array_values($pages) : null, LinkedInPost::TRIGGER_MANUAL);
         } catch (NotConnected|NotShareable|InvalidArgumentException $e) {
-            // InvalidArgumentException: the model's toLinkedInPost() built an invalid post.
+            // InvalidArgumentException: an unknown page, or the model's toLinkedInPost() built an invalid post.
             return $this->respond($request, 422, $e->getMessage());
         } catch (LinkedInRequestFailed $e) {
             return $this->respond($request, 502, $e->getMessage());
         }
 
-        return $this->respond($request, 201, 'Shared on LinkedIn.', [
-            'post_urn' => $post->post_urn,
-            'posted_at' => $post->posted_at?->toIso8601String(),
-        ]);
+        $post = $records->firstWhere('status', LinkedInPost::STATUS_POSTED) ?? $records->first();
+        $posted = $records->where('status', LinkedInPost::STATUS_POSTED)->count();
+
+        return $this->respond($request, 201, $posted === $records->count()
+            ? 'Shared on LinkedIn.'
+            : "Shared on {$posted} of {$records->count()} LinkedIn pages.", [
+                'post_urn' => $post?->post_urn,
+                'posted_at' => $post?->posted_at?->toIso8601String(),
+                'posts' => $records->map(fn (LinkedInPost $record) => [
+                    // Read raw: the column is missing until the 1.2 migration runs.
+                    'page' => $record->getAttributes()['author_urn'] ?? null,
+                    'status' => $record->status,
+                    'post_urn' => $record->post_urn,
+                    'error' => $record->error,
+                ])->values()->all(),
+            ]);
     }
 
     /** @param  array<string, mixed>  $data */

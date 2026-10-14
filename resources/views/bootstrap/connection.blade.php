@@ -60,6 +60,27 @@
                 @endif
             </div>
 
+            @if ($canManage && count($connection->pages) > 1 && isset($pagesUrl))
+                <form @if ($livewire) wire:submit="selectPages" @else method="POST" action="{{ $pagesUrl }}" @endif class="border-top pt-3 mt-3">
+                    @unless ($livewire)
+                        @csrf
+                        @method('PUT')
+                    @endunless
+                    <div class="fw-semibold small mb-2">Post to</div>
+                    @foreach ($connection->pages as $page)
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="pages[]" value="{{ $page->id }}" id="linkedin-page-{{ $loop->index }}"
+                                   @if ($livewire) wire:model="pages" @elseif ($connection->isSelected($page)) checked @endif>
+                            <label class="form-check-label" for="linkedin-page-{{ $loop->index }}">
+                                {{ $page->name ?? $page->id }}
+                                <span class="text-body-secondary small">{{ $page->type === 'member' ? 'Profile' : 'Page' }}</span>
+                            </label>
+                        </div>
+                    @endforeach
+                    <button type="submit" class="btn btn-sm btn-outline-secondary mt-2">Save pages</button>
+                </form>
+            @endif
+
             @if ($connection->status === 'unknown')
                 <div class="text-body-secondary small mt-2">LinkedIn could not be asked about this token just now; it may still work.</div>
             @endif

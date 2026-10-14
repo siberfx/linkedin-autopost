@@ -81,7 +81,8 @@ it('reports not connected without calling LinkedIn', function () {
         ->and(LinkedIn::connection()->connected)->toBeFalse()
         ->and(LinkedIn::connection()->toArray())->toBe([
             'connected' => false, 'status' => null, 'name' => null, 'email' => null, 'picture' => null,
-            'author_urn' => null, 'scopes' => [], 'connected_at' => null, 'expires_at' => null, 'days_left' => null,
+            'author_urn' => null, 'scopes' => [], 'connected_at' => null, 'expires_at' => null,
+            'pages' => [], 'selected_pages' => [], 'days_left' => null,
         ]);
 
     Http::assertNothingSent();

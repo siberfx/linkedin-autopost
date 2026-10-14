@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $email
  * @property string|null $picture
  * @property list<string>|null $scopes
+ * @property array<mixed>|null $pages
+ * @property array<mixed>|null $selected_pages
  * @property CarbonImmutable|null $expires_at
  * @property CarbonImmutable|null $connected_at
  */
@@ -30,6 +32,8 @@ final class LinkedInConnection extends Model
         return [
             'access_token' => 'encrypted',
             'scopes' => 'array',
+            'pages' => 'array',
+            'selected_pages' => 'array',
             'expires_at' => 'immutable_datetime',
             'connected_at' => 'immutable_datetime',
         ];
