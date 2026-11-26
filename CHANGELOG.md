@@ -5,6 +5,12 @@ All notable changes to `siberfx/linkedin-autopost` are documented here. This pro
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-27
+
+### Added
+- Guzzle 8 support: `guzzlehttp/guzzle` is now `^7.8|^8.0`. Guzzle 8 is accepted by Laravel 13.26 and newer; Laravel 12 apps stay on Guzzle 7. The package only talks to LinkedIn through Laravel's HTTP client, so nothing changes in your code.
+- CI runs the suite against both Guzzle 7 and Guzzle 8.
+
 ## [1.2.0] - 2026-10-15
 
 ### Added

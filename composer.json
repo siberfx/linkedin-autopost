@@ -15,7 +15,7 @@
     ],
     "require": {
         "php": "^8.4",
-        "guzzlehttp/guzzle": "^7.8",
+        "guzzlehttp/guzzle": "^7.8|^8.0",
         "illuminate/auth": "^12.0|^13.0",
         "illuminate/bus": "^12.0|^13.0",
         "illuminate/cache": "^12.0|^13.0",

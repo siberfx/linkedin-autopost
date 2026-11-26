@@ -16,7 +16,7 @@ a preview.
 - Headless mode (`LINKEDIN_UI=false`) when you want the package without any UI.
 - Optional Telegram, Slack and email messages on every post, failed share and expiring token, queued or sent at once.
 
-Requires PHP 8.4+ and Laravel 12 or 13.
+Requires PHP 8.4+ and Laravel 12 or 13. Works with Guzzle 7 and Guzzle 8 (Guzzle 8 needs Laravel 13.26 or newer).
 
 ## Contents
 
