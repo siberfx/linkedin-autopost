@@ -105,3 +105,58 @@ it('reports a network failure as a LinkedIn request failure', function () {
     expect(fn () => app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')))
         ->toThrow(LinkedInRequestFailed::class, 'Could not reach LinkedIn: timed out');
 });
+
+it('uploads the image as the posting page and shows it on the preview', function () {
+    $path = tempnam(sys_get_temp_dir(), 'li').'.png';
+    file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='));
+
+    Http::fake([
+        'https://api.linkedin.com/rest/images*' => Http::response(['value' => ['uploadUrl' => 'https://www.linkedin.com/dms-uploads/abc', 'image' => 'urn:li:image:42']]),
+        'https://www.linkedin.com/dms-uploads/abc' => Http::response(null, 201),
+        POSTS_URL => Http::response(null, 201, ['x-restli-id' => 'urn:li:share:7']),
+    ]);
+
+    $post = LinkPost::make('https://example.com/x', 'X')->image($path);
+
+    expect(app(PostsClient::class)->create('member-token', 'urn:li:organization:5', $post))->toBe('urn:li:share:7');
+
+    Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://api.linkedin.com/rest/images')
+        && $request->hasHeader('LinkedIn-Version', '202609')
+        && $request->data() === ['initializeUploadRequest' => ['owner' => 'urn:li:organization:5']]);
+    Http::assertSent(fn (Request $request) => $request->url() === 'https://www.linkedin.com/dms-uploads/abc'
+        && $request->method() === 'PUT'
+        && $request->hasHeader('Authorization', 'Bearer member-token')
+        && $request->hasHeader('Content-Type', 'image/png')
+        && $request->body() === file_get_contents($path));
+    Http::assertSent(fn (Request $request) => $request->url() === POSTS_URL
+        && $request->data()['content']['article']['thumbnail'] === 'urn:li:image:42');
+
+    unlink($path);
+});
+
+it('posts without the image when its upload fails', function () {
+    $path = tempnam(sys_get_temp_dir(), 'li');
+    file_put_contents($path, 'not really an image');
+
+    Http::fake([
+        'https://api.linkedin.com/rest/images*' => Http::response(['message' => 'Not enough permissions'], 403),
+        POSTS_URL => Http::response(null, 201, ['x-restli-id' => 'urn:li:share:8']),
+    ]);
+
+    expect(app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')->image($path)))
+        ->toBe('urn:li:share:8');
+
+    Http::assertSent(fn (Request $request) => $request->url() === POSTS_URL
+        && ! array_key_exists('thumbnail', $request->data()['content']['article']));
+
+    unlink($path);
+});
+
+it('sends no upload for a missing image file', function () {
+    Http::fake([POSTS_URL => Http::response(null, 201, ['x-restli-id' => 'urn:li:share:9'])]);
+
+    app(PostsClient::class)->create('t', 'urn:li:person:abc', LinkPost::make('https://example.com/x', 'X')->image('/nowhere/cover.jpg'));
+
+    Http::assertSentCount(1);
+    Http::assertSent(fn (Request $request) => ! array_key_exists('thumbnail', $request->data()['content']['article']));
+});

@@ -5,6 +5,11 @@ All notable changes to `siberfx/linkedin-autopost` are documented here. This pro
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-28
+
+### Added
+- Preview images: `LinkPost::image($path)` takes a local image file, which is uploaded through LinkedIn's Images API and shown on the link preview. The Posts API does not read the page's `og:image`, so link posts had no picture before. The image is uploaded once for each page it is posted to, as that page. A missing file, or an upload LinkedIn refuses, posts without the image instead of failing the share, and the refused upload is logged as a warning.
+
 ## [1.4.0] - 2026-11-28
 
 ### Added

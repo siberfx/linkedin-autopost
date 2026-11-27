@@ -15,6 +15,8 @@ final class LinkPost
 
     private string $commentary = self::DEFAULT_COMMENTARY;
 
+    private ?string $image = null;
+
     private function __construct(
         private readonly string $url,
         private readonly string $title,
@@ -74,6 +76,24 @@ final class LinkPost
         $copy->commentary = $template;
 
         return $copy;
+    }
+
+    /**
+     * A local image file shown on the link preview. The Posts API does not read
+     * the page's og:image, so the image is uploaded with the post; null or a
+     * missing file posts the preview without one.
+     */
+    public function image(?string $path): self
+    {
+        $copy = clone $this;
+        $copy->image = $path !== null && $path !== '' ? $path : null;
+
+        return $copy;
+    }
+
+    public function imagePath(): ?string
+    {
+        return $this->image;
     }
 
     public function url(): string

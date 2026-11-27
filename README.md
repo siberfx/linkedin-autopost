@@ -467,8 +467,21 @@ The two methods:
 | `make(string $url, string $title)` | title cut to 200 characters | — |
 | `->description(string)` | cut to 256 characters | empty |
 | `->commentary(string $template)` | — | `"{title}\n\n{url}"` |
+| `->image(?string $path)` | a local file; JPG, PNG or GIF | none |
 
 `LinkPost` is immutable: each method returns a copy.
+
+**Preview image.** The Posts API does not read your page's `og:image`, so a link post has no picture
+unless you send one. `image()` takes the path of a local file. It is uploaded through LinkedIn's
+Images API when the post goes out, once for each page, because the image has to belong to whoever
+posts it. A missing file, or an upload LinkedIn refuses, posts the preview without the picture
+rather than failing the share. The refused upload is logged as a warning.
+
+```php
+return LinkPost::make(route('blog.show', $this), $this->title)
+    ->description($this->excerpt)
+    ->image($this->cover ? Storage::disk('public')->path($this->cover) : null);
+```
 
 More `isLiveForLinkedIn()` rules:
 

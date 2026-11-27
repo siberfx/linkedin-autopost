@@ -55,3 +55,12 @@ it('converts an internationalised host to punycode', function () {
     expect(LinkPost::make('https://şirket.com.tr/x', 'X')->url())->toBe('https://xn--irket-idb.com.tr/x')
         ->and(LinkPost::make('https://user@şirket.com.tr:8443/çay', 'X')->url())->toBe('https://user@xn--irket-idb.com.tr:8443/%C3%A7ay');
 })->skip(! function_exists('idn_to_ascii'), 'ext-intl is not installed');
+
+it('keeps the image path, and treats an empty one as none', function () {
+    $post = LinkPost::make('https://example.com/x', 'X');
+
+    expect($post->imagePath())->toBeNull()
+        ->and($post->image('/srv/cover.jpg')->imagePath())->toBe('/srv/cover.jpg')
+        ->and($post->image('')->imagePath())->toBeNull()
+        ->and($post->image('/srv/cover.jpg')->image(null)->imagePath())->toBeNull();
+});
