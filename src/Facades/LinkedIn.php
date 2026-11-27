@@ -17,6 +17,7 @@ use Siberfx\LinkedInAutopost\LinkedInManager;
  * @method static list<\Siberfx\LinkedInAutopost\Data\Page> pages()
  * @method static list<\Siberfx\LinkedInAutopost\Data\Page> selectedPages()
  * @method static \Siberfx\LinkedInAutopost\Data\Connection selectPages(list<string> $pages)
+ * @method static \Siberfx\LinkedInAutopost\Community\Community community()
  * @method static bool wasPosted(\Illuminate\Database\Eloquent\Model $model, string|null $page = null)
  * @method static bool disconnect()
  * @method static string authorizationUrl(string $state)

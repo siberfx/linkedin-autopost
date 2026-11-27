@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
+use Siberfx\LinkedInAutopost\Community\Community;
+use Siberfx\LinkedInAutopost\Community\CommunityClient;
 use Siberfx\LinkedInAutopost\Contracts\ShareableOnLinkedIn;
 use Siberfx\LinkedInAutopost\Contracts\TokenStore;
 use Siberfx\LinkedInAutopost\Data\Connection;
@@ -33,6 +35,7 @@ final class LinkedInManager
         private readonly TokenStore $store,
         private readonly OAuthClient $oauth,
         private readonly PostsClient $posts,
+        private readonly CommunityClient $community,
     ) {}
 
     /** The manager is scoped per request/job, so this is read (query + decrypt) at most once each. */
@@ -205,6 +208,23 @@ final class LinkedInManager
         $this->remember($updated, $connection);
 
         return $connection;
+    }
+
+    /**
+     * LinkedIn's Community Management API for this connection: posts,
+     * comments, reactions, engagement and Page statistics.
+     *
+     * @throws NotConnected
+     */
+    public function community(): Community
+    {
+        $stored = $this->stored() ?? throw new NotConnected;
+
+        return new Community(
+            $this->community,
+            $stored,
+            fn () => $this->remember($stored, $this->connection()->withStatus('expired')),
+        );
     }
 
     public function queue(Model&ShareableOnLinkedIn $model): void

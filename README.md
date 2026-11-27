@@ -11,6 +11,7 @@ a preview.
 
 - One site-wide LinkedIn **member** account (the person who clicks Connect).
 - Post to the member's profile, to the LinkedIn **Pages** they administer, or to several at once: the connection lists the pages and you choose (optional, see [Choosing pages](#choosing-pages-profile-and-linkedin-pages)).
+- Community Management API: read and moderate comments, react, delete posts, and read engagement and Page statistics through `LinkedIn::community()` (see [Community Management API](#community-management-api-comments-reactions-and-statistics)).
 - Auto-post when a model becomes live, at most once, off until you switch it on.
 - Ready-made connection card and share button (Tailwind or Bootstrap 5, Blade or Livewire), plus routes, JSON endpoints, Artisan commands and events if you prefer to build your own.
 - Headless mode (`LINKEDIN_UI=false`) when you want the package without any UI.
@@ -25,6 +26,7 @@ Requires PHP 8.4+ and Laravel 12 or 13. Works with Guzzle 7 and Guzzle 8 (Guzzle
 - [2. Install](#2-install)
 - [3. Connect](#3-connect)
   - [Choosing pages: profile and LinkedIn Pages](#choosing-pages-profile-and-linkedin-pages)
+  - [Community Management API: comments, reactions and statistics](#community-management-api-comments-reactions-and-statistics)
 - [4. Make a model shareable](#4-make-a-model-shareable)
 - [5. Share on demand](#5-share-on-demand)
 - [6. Ready-made admin UI](#6-ready-made-admin-ui)
@@ -329,6 +331,101 @@ php artisan migrate
 Until it runs, everything keeps working as before: posts go to the profile only. A custom
 [token store](#13-keeping-the-token-somewhere-else) that does not keep `pages` and `selectedPages`
 behaves the same way.
+
+### Community Management API: comments, reactions and statistics
+
+Besides posting, `LinkedIn::community()` gives you the rest of LinkedIn's Community Management API for
+the connected account: read and delete posts, read and moderate comments, react, and read engagement
+and Page statistics.
+
+**Switch it on.** Reading Page posts, comments and reactions needs `r_organization_social`, and the
+statistics need `rw_organization_admin`. Like the Pages scopes, LinkedIn grants them only to apps with the
+**Community Management API** product. Once your app has it:
+
+```dotenv
+LINKEDIN_ORGANIZATIONS=true
+LINKEDIN_COMMUNITY=true
+```
+
+then connect again. Change the scopes under `community.scopes`. Commenting and reacting as the member's
+profile only needs `w_member_social`, which is always requested. Reading comments on the profile's own
+posts needs `r_member_social`, which LinkedIn keeps for approved partners.
+
+**Work on one Page.** If the site belongs to one company, keep only its Page and make it the default:
+
+```dotenv
+LINKEDIN_ORGANIZATION_IDS=2414183        # only these Pages are listed when connecting (comma separated)
+LINKEDIN_COMMUNITY_PAGE=2414183          # the Page community calls use when you name none
+```
+
+`LINKEDIN_ORGANIZATION_IDS` (`organizations.only`) drops every other Page the member administers. It
+applies when connecting, so connect again after changing it. `LINKEDIN_COMMUNITY_PAGE` (`community.page`)
+must be one of the connection's pages. Without it, the default is the first selected LinkedIn Page, then
+the first LinkedIn Page. `LinkedIn::community()->defaultPage()` tells you which Page that is. Both settings
+accept an id or a full URN.
+
+```php
+LinkedIn::community()->statistics();                  // the default Page, lifetime
+LinkedIn::community()->posts();                       // its recent posts
+LinkedIn::community()->comment($urn, 'Thanks!');      // commented as that Page
+```
+
+**Pass a post** either as a post URN (`urn:li:share:…`, `urn:li:ugcPost:…`) or as a `LinkedInPost` from
+the share history, for example `$article->linkedInPosts()->latest()->first()`. The **actor** (who comments
+or reacts) must be one of the connection's [pages](#choosing-pages-profile-and-linkedin-pages). It defaults
+to the page the record was posted to, otherwise `community.page`, otherwise the first selected page.
+
+```php
+use Siberfx\LinkedInAutopost\Community\Reaction;
+use Siberfx\LinkedInAutopost\Facades\LinkedIn;
+
+$community = LinkedIn::community();          // throws NotConnected when nothing is connected
+$post = $article->linkedInPosts()->latest()->first();
+
+// Engagement
+$summary = $community->summary($post);       // SocialSummary
+$summary->reactions;                         // ['LIKE' => 12, 'PRAISE' => 3]
+$summary->totalReactions();                  // 15
+$summary->comments;                          // 7
+
+// Comments
+$comments = $community->comments($post, count: 20, start: 0);   // list<Comment>: id, urn, actor, text, parent, createdAt
+$reply = $community->comment($post, 'Thanks for reading!');     // as the page it was posted to
+$community->comment($post, 'Glad it helped', replyTo: $comments[0]);
+$community->comment('urn:li:share:7212…', 'Hi', actor: 'urn:li:organization:2414183');
+$community->deleteComment($post, $comments[0]);                 // a Comment, or its id
+
+// Reactions
+$community->reactions($post);                // list<Reaction>: type, actor, root, createdAt
+$community->react($post, Reaction::PRAISE);  // LIKE, PRAISE, EMPATHY, INTEREST, APPRECIATION, ENTERTAINMENT
+$community->unreact($post);
+
+// Posts
+$community->posts('urn:li:organization:2414183', count: 10);    // the Page's recent posts, as LinkedIn returns them
+$community->post($post);                     // one post as an array, null when it is gone
+$community->deletePost($post);               // deleted on LinkedIn; the record's status becomes "deleted"
+
+// LinkedIn Pages only
+$community->followers('urn:li:organization:2414183');           // int
+$stats = $community->statistics('urn:li:organization:2414183'); // lifetime PageStatistics
+$stats = $community->statistics('urn:li:organization:2414183', now()->subDays(30));   // last 30 days
+$stats->toArray();
+// ['organization' => 'urn:li:organization:2414183', 'followers' => 1520, 'impressions' => 1000,
+//  'unique_impressions' => 800, 'clicks' => 40, 'likes' => 30, 'comments' => 20, 'shares' => 10, 'engagement' => 0.1]
+```
+
+Each data object (`Comment`, `Reaction`, `SocialSummary`, `PageStatistics`) has `toArray()` to send from
+your own JSON endpoints, and `Comment` and `Reaction` keep LinkedIn's full answer in `raw`. LinkedIn caps
+`count` at 100.
+
+**Errors.** A LinkedIn refusal throws `LinkedInRequestFailed` with LinkedIn's message and HTTP status. A
+`401` also marks the connection `expired`, as a failed share does. A page that is not one of the
+connection's pages, an unknown reaction type, empty comment text, or a `LinkedInPost` without a
+`post_urn` throws `InvalidArgumentException` before LinkedIn is called. Deleting a post, comment or
+reaction that is already gone succeeds.
+
+> A deleted record no longer counts as posted, so `wasPosted()` is `false` again and auto-post shares the
+> model again the next time it becomes live.
 
 ## 4. Make a model shareable
 
@@ -1579,6 +1676,10 @@ Define the `manage-linkedin-autopost` gate (or act as a user it allows) in tests
 | `organizations.enabled` | `LINKEDIN_ORGANIZATIONS` | `false` | Offer the LinkedIn Pages the member administers; needs the Community Management API product. |
 | `organizations.scopes` | | `r_organization_admin w_organization_social` | Added to `scopes` when enabled. |
 | `organizations.roles` | | `ADMINISTRATOR, CONTENT_ADMINISTRATOR` | Roles that make a Page selectable. |
+| `community.enabled` | `LINKEDIN_COMMUNITY` | `false` | Ask for the scopes `LinkedIn::community()` needs to read comments, reactions and statistics; needs the Community Management API product. |
+| `organizations.only` | `LINKEDIN_ORGANIZATION_IDS` | empty | Only these Pages (ids or URNs, comma separated); empty keeps every administered Page. Applies on the next connect. |
+| `community.scopes` | | `r_organization_social rw_organization_admin` | Added to `scopes` when enabled. |
+| `community.page` | `LINKEDIN_COMMUNITY_PAGE` | `null` | Default Page for `LinkedIn::community()`; null uses the first selected LinkedIn Page. |
 | `api_version` | `LINKEDIN_API_VERSION` | `202609` | `LinkedIn-Version` header. |
 | `visibility` | `LINKEDIN_VISIBILITY` | `PUBLIC` | or `CONNECTIONS`. |
 | `routes.enabled` | | `true` | `false` registers no routes. |
@@ -1624,6 +1725,7 @@ Define the `manage-linkedin-autopost` gate (or act as a user it allows) in tests
 | Not connected after rotating `APP_KEY` | The stored token can no longer be decrypted: connect again. |
 | Only the profile is listed under `pages` | `LINKEDIN_ORGANIZATIONS=true` is not set, the app lacks the Community Management API product, the member is not an admin of the Page, or you have not connected again since switching it on. The log has *Could not list the LinkedIn Pages of the member* when LinkedIn refused. |
 | `?linkedin=error&reason=…r_organization_admin…` | `LINKEDIN_ORGANIZATIONS=true` but the app is not approved for the Community Management API yet: switch it off until it is. |
+| `LinkedIn::community()` answers *403* / *ACCESS_DENIED* | The token lacks the scope: set `LINKEDIN_COMMUNITY=true` and connect again. `linkedin:status` lists the granted scopes. Reading comments on the member's own profile needs `r_member_social`, which most apps cannot get. |
 | A Page share answers *403* | The member lost the admin role on that Page, or `w_organization_social` was not granted: connect again and check `linkedin:status`. |
 
 ## Testing

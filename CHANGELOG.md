@@ -5,6 +5,16 @@ All notable changes to `siberfx/linkedin-autopost` are documented here. This pro
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-28
+
+### Added
+- Community Management API through `LinkedIn::community()`. You can list a page's posts, read a post (`post()`) and delete it (`deletePost()`). You can list, create, reply to and delete comments (`comments()`, `comment()`, `deleteComment()`), and list, add and remove reactions (`reactions()`, `react()`, `unreact()`). You can read a post's reaction and comment counts (`summary()`) and a LinkedIn Page's followers and share statistics, lifetime or over a date range (`followers()`, `statistics()`). A post can be a URN or a `LinkedInPost` record. Comments and reactions are made as one of the connection's pages, by default the page the record was posted to.
+- New data objects `Community\Comment`, `Community\Reaction`, `Community\SocialSummary` and `Community\PageStatistics`, each with `toArray()`.
+- `LINKEDIN_COMMUNITY=true` (`community.enabled`) also asks for `r_organization_social` and `rw_organization_admin` (`community.scopes`). Both need the Community Management API product.
+- `LinkedInPost::STATUS_DELETED`: `deletePost()` marks the deleted post's record with it, so the record no longer counts as posted.
+- `LINKEDIN_ORGANIZATION_IDS` (`organizations.only`): connect only the listed LinkedIn Pages, by id or URN, instead of every Page the member administers. Applies on the next connect.
+- `LINKEDIN_COMMUNITY_PAGE` (`community.page`): the Page `LinkedIn::community()` works on when a call names none. `posts()`, `followers()` and `statistics()` now take an optional Page, and comments and reactions on a URN are made as this Page. `defaultPage()` returns it: the configured Page, else the first selected LinkedIn Page, else the first one.
+
 ## [1.3.0] - 2026-11-27
 
 ### Added

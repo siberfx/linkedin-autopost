@@ -146,13 +146,15 @@ final class OAuthClient
         }
 
         $roles = array_map('strval', (array) config('linkedin-autopost.organizations.roles', ['ADMINISTRATOR', 'CONTENT_ADMINISTRATOR']));
+        $only = self::onlyOrganizations();
         $urns = [];
 
         foreach ((array) $acls->json('elements', []) as $acl) {
             // "organization" since the versioned API; "organizationalTarget" before it.
             $urn = is_array($acl) ? ($acl['organization'] ?? $acl['organizationalTarget'] ?? null) : null;
 
-            if (is_string($urn) && str_starts_with($urn, 'urn:li:organization:') && in_array($acl['role'] ?? null, $roles, true)) {
+            if (is_string($urn) && str_starts_with($urn, 'urn:li:organization:') && in_array($acl['role'] ?? null, $roles, true)
+                && ($only === [] || in_array($urn, $only, true))) {
                 $urns[$urn] = true;
             }
         }
@@ -164,6 +166,29 @@ final class OAuthClient
         ), array_keys($urns));
     }
 
+    /**
+     * organizations.only as URNs: ids ("2414183") or URNs, in an array or a
+     * comma-separated string. Empty means every Page the member administers.
+     *
+     * @return list<string>
+     */
+    public static function onlyOrganizations(): array
+    {
+        $only = config('linkedin-autopost.organizations.only', []);
+        $items = is_string($only) ? explode(',', $only) : (array) $only;
+        $urns = [];
+
+        foreach ($items as $item) {
+            $item = is_scalar($item) ? trim((string) $item) : '';
+
+            if ($item !== '') {
+                $urns[] = str_starts_with($item, 'urn:li:organization:') ? $item : 'urn:li:organization:'.$item;
+            }
+        }
+
+        return array_values(array_unique($urns));
+    }
+
     private function organizationName(string $token, string $urn): ?string
     {
         $organization = $this->jsonOrNull(fn () => $this->rest($token)->get(self::ORGANIZATIONS.substr($urn, strlen('urn:li:organization:'))));
@@ -171,13 +196,15 @@ final class OAuthClient
         return self::stringOrNull($organization['localizedName'] ?? null);
     }
 
-    /** @return list<string> The configured scopes, plus the organization scopes when organizations are enabled. */
+    /** @return list<string> The configured scopes, plus the organization and community scopes when each is enabled. */
     public function requestedScopes(): array
     {
         $scopes = array_map('strval', (array) config('linkedin-autopost.scopes', []));
 
-        if (config('linkedin-autopost.organizations.enabled', false)) {
-            $scopes = [...$scopes, ...array_map('strval', (array) config('linkedin-autopost.organizations.scopes', []))];
+        foreach (['organizations', 'community'] as $feature) {
+            if (config("linkedin-autopost.{$feature}.enabled", false)) {
+                $scopes = [...$scopes, ...array_map('strval', (array) config("linkedin-autopost.{$feature}.scopes", []))];
+            }
         }
 
         return array_values(array_unique($scopes));

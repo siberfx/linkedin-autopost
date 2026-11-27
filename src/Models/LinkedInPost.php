@@ -26,6 +26,9 @@ final class LinkedInPost extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    /** Posted, then deleted from LinkedIn through LinkedIn::community()->deletePost(). */
+    public const STATUS_DELETED = 'deleted';
+
     public const TRIGGER_AUTO = 'auto';
 
     public const TRIGGER_MANUAL = 'manual';

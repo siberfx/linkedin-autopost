@@ -34,6 +34,27 @@ return [
         'scopes' => ['r_organization_admin', 'w_organization_social'],
         // Organization roles that may post as the Page.
         'roles' => ['ADMINISTRATOR', 'CONTENT_ADMINISTRATOR'],
+        // Only these Pages, by id or URN: "2414183,5550101". Empty: every Page
+        // the member administers. Takes effect on the next connect.
+        'only' => env('LINKEDIN_ORGANIZATION_IDS', ''),
+    ],
+
+    /*
+    | Community Management API beyond posting: read Page posts, comments and
+    | reactions, moderate comments, and read follower and share statistics
+    | through LinkedIn::community(). Asks for these scopes too; like the ones
+    | above they need the "Community Management API" product. Comments and
+    | reactions as the member's profile need w_member_social (already asked);
+    | reading them on the profile needs r_member_social, which LinkedIn grants
+    | only to approved partners. Off: LinkedIn::community() still works with
+    | whatever scopes the token has.
+    */
+    'community' => [
+        'enabled' => (bool) env('LINKEDIN_COMMUNITY', false),
+        'scopes' => ['r_organization_social', 'rw_organization_admin'],
+        // The Page LinkedIn::community() works on when none is given, by id
+        // or URN. Null: the first selected LinkedIn Page, else the first one.
+        'page' => env('LINKEDIN_COMMUNITY_PAGE'),
     ],
 
     /*
